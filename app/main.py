@@ -1,24 +1,28 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from datetime import timedelta
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from config.settings import settings
 from app.database import init_db, get_db
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.api.auth.auth import AuthService, UserCreate, UserLogin, Token, get_current_active_user
+from app.api.routes.essays import router as essays_router
+from app.api.routes.ai_grading import router as ai_router
+from app.models.models import User
 
 # Lifespan events
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     print(f"🚀 Starting {settings.app_name}")
     await init_db()
     yield
-    # Shutdown
     print("👋 Shutting down gracefully")
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.version,
-    description="AI-powered language learning backend",
+    description="AI-powered language learning backend with essay grading and speaking analysis",
     lifespan=lifespan
 )
 
@@ -30,27 +34,90 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include routers
+app.include_router(essays_router)
+app.include_router(ai_router)
+
+# --- BASIC ROUTES ---
 @app.get("/")
 async def root():
     return {
         "message": f"Welcome to {settings.app_name}",
         "version": settings.version,
-        "status": "running"
+        "status": "running",
+        "features": ["Authentication", "Essay Management", "AI Grading", "Database"],
+        "ai_enabled": bool(settings.openai_api_key and settings.openai_api_key.startswith("sk-"))
     }
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "database": "connected"}
+    return {"status": "healthy", "database": "connected", "ai": "available"}
 
-@app.get("/api/demo/hello")
-async def hello_world():
-    return {"message": "Hello from your language learning backend!"}
+# --- AUTHENTICATION ROUTES ---
+@app.post("/api/auth/register", response_model=dict)
+async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
+    """Register a new user"""
+    existing_user = await AuthService.get_user_by_email(db, user_data.email)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    new_user = await AuthService.create_user(db, user_data)
+    
+    return {
+        "message": "User created successfully",
+        "user_id": new_user.id,
+        "email": new_user.email,
+        "username": new_user.username
+    }
 
-@app.post("/api/demo/echo")
-async def echo(data: dict):
-    return {"echo": data, "received": True}
+@app.post("/api/auth/login", response_model=Token)
+async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
+    """Login user and return JWT token"""
+    user = await AuthService.authenticate_user(db, login_data.email, login_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = AuthService.create_access_token(
+        data={"sub": user.email}, expires_delta=access_token_expires
+    )
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer"
+    }
 
-# Demo database endpoint
-@app.get("/api/demo/db-test")
-async def test_database(db: AsyncSession = Depends(get_db)):
-    return {"message": "Database connection successful!", "db_type": "SQLite"}
+@app.get("/api/auth/me")
+async def get_current_user_info(current_user: User = Depends(get_current_active_user)):
+    """Get current user profile"""
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "username": current_user.username,
+        "full_name": current_user.full_name,
+        "user_type": current_user.user_type,
+        "created_at": current_user.created_at.isoformat()
+    }
+
+# --- DEMO ROUTES ---
+@app.get("/api/demo/protected")
+async def protected_demo(current_user: User = Depends(get_current_active_user)):
+    return {
+        "message": f"Hello {current_user.full_name}! This is a protected endpoint.",
+        "user_id": current_user.id,
+        "user_type": current_user.user_type
+    }
+
+# Import new routers
+from app.api.routes.speaking import router as speaking_router
+from app.api.routes.admin import router as admin_router
+
+# Add new routers (add these lines after the existing include_router calls)
+app.include_router(speaking_router)
+app.include_router(admin_router)
+from app.api.routes.dashboard import router as dashboard_router
+app.include_router(dashboard_router)
