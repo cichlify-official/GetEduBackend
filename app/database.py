@@ -1,60 +1,32 @@
-from sqlachemy import create_engine
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, create_async_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 from config.settings import settings
 from app.models.models import Base
 
-engine = create_async_engine(
-    settings.database_url,
-    pool_pre_ping=True,
-    pool_recycle=300,
-)
-
+# Async database engine
 async_engine = create_async_engine(
     settings.database_url_async,
-    pool_pre_ping=True,
-    pool_recycle=300,
+    echo=settings.debug
 )
 
-SessionalLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine,
-)
-
+# Async session maker
 AsyncSessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=async_engine,
+    async_engine,
+    class_=AsyncSession,
+    expire_on_commit=False
 )
 
-async def get_async_db() -> AsyncSession:
+# Dependency for FastAPI
+async def get_db():
     async with AsyncSessionLocal() as session:
         try:
             yield session
         finally:
             await session.close()
 
-def get_sync_db() -> Session:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-async def create_tabkes():
+# Initialize database
+async def init_db():
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
-class DatabaseManager:
-    @staticmethod
-    async def init_db():
-        await create_tables()
-        print("Tables created successfully")
-
-    @staticmethod
-    async def reset_db():
-        async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
-            await conn.run_sync(Base.metadata.create_all)
-        print("Datebase reset completed")
+    print("✅ Database initialized!")

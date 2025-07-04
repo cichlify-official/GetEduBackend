@@ -1,3 +1,4 @@
+# docker-compose.yml
 version: '3.8'
 
 services:
@@ -13,11 +14,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d language_ai"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    networks:
+      - app-network
 
   # Redis for Celery
   redis:
@@ -31,10 +29,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - app-network
 
   # FastAPI Application
   api:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
@@ -51,13 +53,8 @@ services:
       redis:
         condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    develop:
-      watch:
-        - action: sync
-          path: ./app
-          target: /app/app
-        - action: rebuild
-          path: requirements.txt
+    networks:
+      - app-network
 
   # Celery Worker
   celery-worker:
@@ -98,3 +95,23 @@ services:
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  app-network:
+    driver: bridge
+
+# Docker Concepts Explained:
+#
+# SERVICES: Different parts of your application (database, API, workers)
+# VOLUMES: Persistent storage that survives container restarts
+# NETWORKS: How containers communicate with each other
+# HEALTHCHECKS: Ensure services are ready before starting dependents
+# ENVIRONMENT: Configuration passed to containers
+# DEPENDS_ON: Start services in the right order
+# 
+# Benefits of Docker:
+# - Consistent development environment
+# - Easy to set up on any machine
+# - Matches production environment
+# - Isolates dependencies
+# - Easy to scale services
