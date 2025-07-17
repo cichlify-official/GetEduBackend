@@ -3,7 +3,7 @@ app = "get-education-backend"
 primary_region = "ord"
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = "Dockerfile.fly"
 
 [env]
   PORT = "8000"
@@ -53,6 +53,7 @@ primary_region = "ord"
     restart_limit = 0
     timeout = "2s"
 
+# Health check
 [[services.http_checks]]
   interval = "10s"
   grace_period = "5s"
@@ -62,12 +63,16 @@ primary_region = "ord"
   timeout = "2s"
   tls_skip_verify = false
 
+# Process groups
 [processes]
   app = "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
   worker = "python -m celery -A workers.celery_app worker --loglevel=info"
 
+# Volume for uploads
 [mounts]
   source = "uploads_vol"
   destination = "/app/uploads"
 
+# Deploy configuration - FIXED
 [deploy]
+  release_command = "python -m alembic upgrade head"
