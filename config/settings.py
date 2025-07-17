@@ -6,21 +6,38 @@ class Settings(BaseSettings):
     """Application settings"""
     
     # Application
-    app_name: str = "GET Education Platform"
+    app_name: str = "Language Learning AI Backend"
     debug: bool = False
     version: str = "1.0.0"
     
-    # Database - use persistent volume in production
-    database_url: str = "sqlite:///./data/get_education.db"
-    database_url_async: str = "sqlite+aiosqlite:///./data/get_education.db"
+    # Server
+    port: int = int(os.getenv("PORT", "8000"))
+    host: str = "0.0.0.0"
+    
+    # Database - Use PostgreSQL from Render
+    database_url: str = os.getenv("DATABASE_URL", "sqlite:///./language_ai.db")
+    database_url_async: str = None
+    
+    def __post_init__(self):
+        # Convert PostgreSQL URL to async version
+        if self.database_url_async is None:
+            if self.database_url.startswith("postgres://"):
+                # Render uses postgres:// but SQLAlchemy needs postgresql://
+                self.database_url = self.database_url.replace("postgres://", "postgresql://", 1)
+                self.database_url_async = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            elif self.database_url.startswith("postgresql://"):
+                self.database_url_async = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            else:
+                # Fallback to SQLite for local development
+                self.database_url_async = "sqlite+aiosqlite:///./language_ai.db"
     
     # Security
-    secret_key: str = "production-secret-key-change-this"
+    secret_key: str = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     
     # AI APIs
-    openai_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
     
     # File uploads
     upload_folder: str = "uploads"
@@ -28,6 +45,14 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+        case_sensitive = False
+
+# Initialize settings
+def get_settings():
+    settings = Settings()
+    # Post-process database URL
+    settings.__post_init__()
+    return settings
 
 # Global settings instance
-settings = Settings()
+settings = get_settings()
