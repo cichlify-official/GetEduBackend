@@ -1,0 +1,29 @@
+services:
+  # Web Service
+  - type: web
+    name: language-ai-backend
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DEBUG
+        value: false
+      - key: APP_NAME
+        value: "Language Learning AI Backend"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: language-ai-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: OPENAI_API_KEY
+        sync: false  # You'll set this manually
+    
+  # PostgreSQL Database
+  - type: pgsql
+    name: language-ai-db
+    plan: free
+    databaseName: language_ai
+    user: language_ai_user
