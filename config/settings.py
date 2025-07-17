@@ -1,20 +1,21 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
+import os
 
 class Settings(BaseSettings):
     """Application settings"""
     
     # Application
     app_name: str = "GET Education Platform"
-    debug: bool = True
+    debug: bool = False
     version: str = "1.0.0"
     
-    # Database (SQLite for development)
-    database_url: str = "sqlite:///./get_education.db"
-    database_url_async: str = "sqlite+aiosqlite:///./get_education.db"
+    # Database - use persistent volume in production
+    database_url: str = "sqlite:///./data/get_education.db"
+    database_url_async: str = "sqlite+aiosqlite:///./data/get_education.db"
     
     # Security
-    secret_key: str = "dev-secret-key-change-in-production"
+    secret_key: str = "production-secret-key-change-this"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     

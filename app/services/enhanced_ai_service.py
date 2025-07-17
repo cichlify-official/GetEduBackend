@@ -229,3 +229,114 @@ class WhisperService:
                 "duration": 0,
                 "error": str(e)
             }
+
+    async def generate_reading_questions(self, passage: str, difficulty: str = "intermediate",
+                                       num_questions: int = 10) -> Dict[str, Any]:
+        """Generate reading comprehension questions from a passage"""
+        
+        if not self.client:
+            return self._fallback_questions_response("No OpenAI API key")
+        
+        prompt = f"""
+        Create {num_questions} reading comprehension questions for this passage at {difficulty} level.
+        
+        Passage:
+        {passage}
+        
+        Create a mix of:
+        - Multiple choice questions (4 options each)
+        - True/False/Not Given questions
+        - Short answer questions
+        
+        Return in this JSON format:
+        {{
+            "questions": [
+                {{
+                    "id": 1,
+                    "type": "multiple_choice",
+                    "question": "What is the main idea of the passage?",
+                    "options": ["A", "B", "C", "D"],
+                    "correct_answer": "A",
+                    "skill_tested": "gist_understanding"
+                }}
+            ],
+            "answer_key": [
+                {{"question_id": 1, "correct_answer": "A", "explanation": "Because..."}}
+            ],
+            "difficulty_level": "{difficulty}"
+        }}
+        """
+        
+        try:
+            if OPENAI_NEW_VERSION:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are an expert test creator specializing in reading comprehension assessments."
+                        },
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.4,
+                    max_tokens=2000
+                )
+                
+                result = json.loads(response.choices[0].message.content)
+                result["tokens_used"] = response.usage.total_tokens
+                result["cost"] = self._calculate_cost(response.usage.total_tokens)
+                
+            else:
+                response = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: openai.ChatCompletion.create(
+                        model=self.model,
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "You are an expert test creator specializing in reading comprehension assessments."
+                            },
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.4,
+                        max_tokens=2000
+                    )
+                )
+                
+                result = json.loads(response.choices[0].message.content)
+                result["tokens_used"] = response.usage.total_tokens
+                result["cost"] = self._calculate_cost(response.usage.total_tokens)
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Reading question generation failed: {str(e)}")
+            return self._fallback_questions_response(str(e))
+    
+    def _fallback_questions_response(self, error: str) -> Dict[str, Any]:
+        """Fallback response for question generation"""
+        return {
+            "questions": [
+                {
+                    "id": 1,
+                    "type": "multiple_choice",
+                    "question": "What is the main topic of the passage?",
+                    "options": ["Education", "Technology", "Environment", "Business"],
+                    "correct_answer": "Education",
+                    "skill_tested": "gist_understanding"
+                },
+                {
+                    "id": 2,
+                    "type": "true_false_not_given",
+                    "question": "The passage discusses future trends.",
+                    "correct_answer": "True",
+                    "skill_tested": "inference"
+                }
+            ],
+            "answer_key": [
+                {"question_id": 1, "correct_answer": "Education", "explanation": "Demo question - add OpenAI key for real questions"},
+                {"question_id": 2, "correct_answer": "True", "explanation": "Demo question - add OpenAI key for real questions"}
+            ],
+            "error": error,
+            "demo_mode": True
+        }
