@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
+from datetime import datetime
 
 from app.database import get_db
 from app.models.models import User, Essay, EssayGrading
 from app.api.auth.auth import get_current_active_user
+from app.services.enhanced_ai_service import EnhancedAIService
 from app.services.free_ai_service import FreeAIService
 
 router = APIRouter(prefix="/api/ai", tags=["AI Grading"])
@@ -19,7 +21,7 @@ async def grade_essay_endpoint(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Grade an essay using free AI analysis"""
+    """Grade an essay using AI analysis"""
     
     # Get the essay
     result = await db.execute(
@@ -36,13 +38,25 @@ async def grade_essay_endpoint(
     if essay.is_graded:
         raise HTTPException(status_code=400, detail="Essay already graded")
     
-    # Grade with free AI service
-    ai_service = FreeAIService()
-    grading_result = ai_service.grade_essay(
-        content=essay.content,
-        task_type=essay.task_type,
-        word_count=essay.word_count
-    )
+    # Try enhanced AI service first, fallback to free service
+    try:
+        ai_service = EnhancedAIService()
+        grading_result = await ai_service.grade_essay(
+            content=essay.content,
+            task_type=essay.task_type,
+            word_count=essay.word_count
+        )
+        ai_model_used = "gpt-4"
+    except Exception as e:
+        print(f"Enhanced AI service failed: {e}")
+        # Fallback to free service
+        ai_service = FreeAIService()
+        grading_result = ai_service.grade_essay(
+            content=essay.content,
+            task_type=essay.task_type,
+            word_count=essay.word_count
+        )
+        ai_model_used = "free_ai_v1"
     
     # Save grading results
     essay_grading = EssayGrading(
@@ -53,7 +67,8 @@ async def grade_essay_endpoint(
         grammar_accuracy=grading_result["scores"]["grammar_accuracy"],
         overall_band=grading_result["scores"]["overall_band"],
         feedback=grading_result["feedback"],
-        ai_model_used="free_ai_v1"
+        lesson_recommendations=grading_result.get("lesson_recommendations", []),
+        ai_model_used=ai_model_used
     )
     
     db.add(essay_grading)
@@ -61,48 +76,17 @@ async def grade_essay_endpoint(
     # Update essay
     essay.is_graded = True
     essay.overall_score = grading_result["scores"]["overall_band"]
+    essay.graded_at = datetime.utcnow()
     
     await db.commit()
     
     return {
-        "message": "Essay graded successfully with Free AI",
+        "message": "Essay graded successfully",
         "essay_id": essay.id,
         "overall_band": grading_result["scores"]["overall_band"],
-        "cost": 0.0,  # Completely free!
-        "analysis_type": "rule_based",
+        "cost": grading_result.get("cost", 0.0),
+        "analysis_type": grading_result.get("analysis_type", "ai_powered"),
         "grading": grading_result
-    }
-
-@router.get("/grading-history")
-async def get_grading_history(
-    current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Get user's AI grading history"""
-    
-    result = await db.execute(
-        select(Essay, EssayGrading)
-        .join(EssayGrading, Essay.id == EssayGrading.essay_id)
-        .where(Essay.author_id == current_user.id)
-        .order_by(Essay.submitted_at.desc())
-    )
-    
-    graded_essays = result.all()
-    
-    return {
-        "graded_essays": [
-            {
-                "essay_id": essay.id,
-                "title": essay.title,
-                "task_type": essay.task_type,
-                "overall_band": grading.overall_band,
-                "submitted_at": essay.submitted_at.isoformat(),
-                "ai_model": grading.ai_model_used
-            }
-            for essay, grading in graded_essays
-        ],
-        "total_graded": len(graded_essays),
-        "cost_saved": len(graded_essays) * 0.10  # Show how much money saved vs paid services
     }
 
 @router.post("/demo-grade")
@@ -118,16 +102,27 @@ async def demo_grade_text(
     if not content.strip():
         raise HTTPException(status_code=400, detail="Content cannot be empty")
     
-    ai_service = FreeAIService()
-    grading_result = ai_service.grade_essay(
-        content=content,
-        task_type=task_type,
-        word_count=len(content.split())
-    )
+    # Try enhanced AI service first, fallback to free service
+    try:
+        ai_service = EnhancedAIService()
+        grading_result = await ai_service.grade_essay(
+            content=content,
+            task_type=task_type,
+            word_count=len(content.split())
+        )
+    except Exception as e:
+        print(f"Enhanced AI service failed: {e}")
+        # Fallback to free service
+        ai_service = FreeAIService()
+        grading_result = ai_service.grade_essay(
+            content=content,
+            task_type=task_type,
+            word_count=len(content.split())
+        )
     
     return {
         "message": "Demo grading completed",
-        "analysis_type": "free_ai",
-        "cost": 0.0,
+        "analysis_type": grading_result.get("analysis_type", "ai_powered"),
+        "cost": grading_result.get("cost", 0.0),
         "grading": grading_result
     }

@@ -1,9 +1,15 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Float, Boolean, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Text, Float, Boolean, ForeignKey, JSON, Enum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
+import enum
 
 Base = declarative_base()
+
+class UserType(enum.Enum):
+    STUDENT = "student"
+    TEACHER = "teacher"
+    ADMIN = "admin"
 
 class User(Base):
     """Users table - stores student/teacher accounts"""
@@ -14,7 +20,7 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     full_name = Column(String, nullable=False)
     hashed_password = Column(String, nullable=False)
-    user_type = Column(String, default="student")  # student, teacher, admin
+    user_type = Column(Enum(UserType), default=UserType.STUDENT)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
@@ -28,12 +34,13 @@ class Essay(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
     content = Column(Text, nullable=False)
-    task_type = Column(String, default="general")  # task1, task2, general
+    task_type = Column(String, default="general")
     word_count = Column(Integer)
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     is_graded = Column(Boolean, default=False)
     overall_score = Column(Float, nullable=True)
     submitted_at = Column(DateTime, default=datetime.utcnow)
+    graded_at = Column(DateTime, nullable=True)
     
     # Relationships
     author = relationship("User", back_populates="essays")
@@ -55,7 +62,9 @@ class EssayGrading(Base):
     
     # Feedback (JSON format)
     feedback = Column(JSON)
+    lesson_recommendations = Column(JSON)
     ai_model_used = Column(String, default="gpt-4")
+    processing_time = Column(Float)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships

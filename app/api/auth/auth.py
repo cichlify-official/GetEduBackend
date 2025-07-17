@@ -9,7 +9,7 @@ from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
 
 from app.database import get_db
-from app.models.models import User
+from app.models.models import User, UserType
 from config.settings import settings
 
 # Password hashing
@@ -21,6 +21,7 @@ class UserCreate(BaseModel):
     username: str
     full_name: str
     password: str
+    user_type: str = "student"
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -29,6 +30,7 @@ class UserLogin(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    user: dict
 
 class AuthService:
     @staticmethod
@@ -60,11 +62,19 @@ class AuthService:
     async def create_user(db: AsyncSession, user_data: UserCreate) -> User:
         hashed_password = AuthService.get_password_hash(user_data.password)
         
+        # Convert string to enum
+        user_type_enum = UserType.STUDENT
+        if user_data.user_type.lower() == "teacher":
+            user_type_enum = UserType.TEACHER
+        elif user_data.user_type.lower() == "admin":
+            user_type_enum = UserType.ADMIN
+        
         db_user = User(
             email=user_data.email,
             username=user_data.username,
             full_name=user_data.full_name,
-            hashed_password=hashed_password
+            hashed_password=hashed_password,
+            user_type=user_type_enum
         )
         
         db.add(db_user)

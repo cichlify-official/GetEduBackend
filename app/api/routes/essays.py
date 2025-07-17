@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from typing import List
+from datetime import datetime
 
 from app.database import get_db
 from app.models.models import User, Essay, EssayGrading
@@ -14,19 +15,6 @@ class EssayCreate(BaseModel):
     title: str
     content: str
     task_type: str = "general"
-
-class EssayResponse(BaseModel):
-    id: int
-    title: str
-    content: str
-    task_type: str
-    word_count: int
-    is_graded: bool
-    overall_score: float = None
-    submitted_at: str
-
-    class Config:
-        from_attributes = True
 
 @router.post("/submit")
 async def submit_essay(
@@ -112,6 +100,7 @@ async def get_essay_details(
                 "lexical_resource": grading.lexical_resource,
                 "grammar_accuracy": grading.grammar_accuracy,
                 "feedback": grading.feedback,
+                "lesson_recommendations": grading.lesson_recommendations,
                 "ai_model_used": grading.ai_model_used
             }
     

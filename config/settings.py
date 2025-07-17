@@ -5,13 +5,13 @@ class Settings(BaseSettings):
     """Application settings"""
     
     # Application
-    app_name: str = "Language Learning AI Backend"
+    app_name: str = "GET Education Platform"
     debug: bool = True
     version: str = "1.0.0"
     
     # Database (SQLite for development)
-    database_url: str = "sqlite:///./language_ai.db"
-    database_url_async: str = "sqlite+aiosqlite:///./language_ai.db"
+    database_url: str = "sqlite:///./get_education.db"
+    database_url_async: str = "sqlite+aiosqlite:///./get_education.db"
     
     # Security
     secret_key: str = "dev-secret-key-change-in-production"

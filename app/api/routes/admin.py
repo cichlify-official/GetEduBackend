@@ -4,13 +4,15 @@ from sqlalchemy import select, func
 from datetime import datetime, timedelta
 
 from app.database import get_db
-from app.models.models import User, Essay, EssayGrading
+from app.models.models import User, Essay, EssayGrading, UserType
 from app.api.auth.auth import get_current_active_user
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Dashboard"])
 
 async def verify_admin(current_user: User = Depends(get_current_active_user)):
-    """Verify user is admin (for now, any user can access - you can restrict this)"""
+    """Verify user is admin"""
+    if current_user.user_type not in [UserType.ADMIN, UserType.TEACHER]:
+        raise HTTPException(status_code=403, detail="Admin or Teacher access required")
     return current_user
 
 @router.get("/stats")
@@ -57,7 +59,7 @@ async def get_platform_stats(
             "essays_this_week": recent_essays
         },
         "system_info": {
-            "ai_grading": "Free Rule-Based System",
+            "ai_grading": "Enhanced AI + Free Fallback",
             "cost_saved": f"${(graded_essays * 0.10):.2f}",
             "uptime": "Running smoothly",
             "database": "SQLite (Development)"
@@ -96,4 +98,32 @@ async def get_recent_activity(
             for essay, user in recent_essays
         ],
         "total_shown": len(recent_essays)
+    }
+
+@router.get("/users")
+async def get_all_users(
+    current_user: User = Depends(verify_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all users (admin only)"""
+    
+    if current_user.user_type != UserType.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    result = await db.execute(select(User).order_by(User.created_at.desc()))
+    users = result.scalars().all()
+    
+    return {
+        "users": [
+            {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "full_name": user.full_name,
+                "user_type": user.user_type.value,
+                "is_active": user.is_active,
+                "created_at": user.created_at.isoformat()
+            }
+            for user in users
+        ]
     }

@@ -94,3 +94,33 @@ async def demo_speaking_analysis(
             "suggestions": ["Speak for longer periods", "Use more varied vocabulary"]
         }
     }
+    
+    # Calculate scores (simplified)
+    fluency_score = min(6.0 + (words_per_sentence - 10) * 0.2, 9.0) if words_per_sentence > 5 else 5.0
+    lexical_score = min(5.0 + (len(set(text.lower().split())) / max(word_count, 1)) * 6, 9.0)
+    grammar_score = 6.0 if ',' in text and len(text.split()) > 10 else 5.5
+    pronunciation_score = 6.5  # Demo score
+    
+    overall_band = round((fluency_score + lexical_score + grammar_score + pronunciation_score) / 4, 1)
+    
+    return {
+        "message": "Speaking analysis completed (demo)",
+        "scores": {
+            "fluency_coherence": fluency_score,
+            "lexical_resource": lexical_score,
+            "grammatical_range": grammar_score,
+            "pronunciation": pronunciation_score,
+            "overall_band": overall_band
+        },
+        "analysis": {
+            "word_count": word_count,
+            "sentence_count": sentence_count,
+            "words_per_sentence": round(words_per_sentence, 1),
+            "vocabulary_diversity": round(len(set(text.lower().split())) / max(word_count, 1), 2)
+        },
+        "feedback": {
+            "strengths": ["Good attempt at speaking task"],
+            "improvements": ["Continue practicing for better fluency"],
+            "suggestions": ["Speak for longer periods", "Use more varied vocabulary"]
+        }
+    }
