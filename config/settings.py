@@ -16,20 +16,7 @@ class Settings(BaseSettings):
     
     # Database - Use PostgreSQL from Render
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./language_ai.db")
-    database_url_async: str = None
-    
-    def __post_init__(self):
-        # Convert PostgreSQL URL to async version
-        if self.database_url_async is None:
-            if self.database_url.startswith("postgres://"):
-                # Render uses postgres:// but SQLAlchemy needs postgresql://
-                self.database_url = self.database_url.replace("postgres://", "postgresql://", 1)
-                self.database_url_async = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-            elif self.database_url.startswith("postgresql://"):
-                self.database_url_async = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-            else:
-                # Fallback to SQLite for local development
-                self.database_url_async = "sqlite+aiosqlite:///./language_ai.db"
+    database_url_async: Optional[str] = None
     
     # Security
     secret_key: str = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
@@ -47,12 +34,19 @@ class Settings(BaseSettings):
         env_file = ".env"
         case_sensitive = False
 
-# Initialize settings
-def get_settings():
-    settings = Settings()
-    # Post-process database URL
-    settings.__post_init__()
-    return settings
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Post-process database URL after initialization
+        if self.database_url_async is None:
+            if self.database_url.startswith("postgres://"):
+                # Render uses postgres:// but SQLAlchemy needs postgresql://
+                self.database_url = self.database_url.replace("postgres://", "postgresql://", 1)
+                self.database_url_async = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            elif self.database_url.startswith("postgresql://"):
+                self.database_url_async = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            else:
+                # Fallback to SQLite for local development
+                self.database_url_async = "sqlite+aiosqlite:///./language_ai.db"
 
 # Global settings instance
-settings = get_settings()
+settings = Settings()

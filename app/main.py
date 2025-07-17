@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,12 +9,14 @@ import os
 from config.settings import settings
 from app.database import init_db, get_db, check_db_health, close_db
 from app.api.auth.auth import AuthService, UserCreate, UserLogin, Token, get_current_active_user
+from app.models.models import User
+
+# Import all routers
 from app.api.routes.essays import router as essays_router
 from app.api.routes.ai_grading import router as ai_router
 from app.api.routes.speaking import router as speaking_router
 from app.api.routes.admin import router as admin_router
 from app.api.routes.dashboard import router as dashboard_router
-from app.models.models import User
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -53,10 +54,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version=settings.version,
-    description="AI-powered language learning backend with essay grading and speaking analysis",
+    description="Complete IELTS AI Learning Platform - Reading, Listening, Writing, Speaking & AI Curriculum",
     lifespan=lifespan,
-    docs_url="/docs" if settings.debug else "/docs",  # Always enable docs for now
-    redoc_url="/redoc" if settings.debug else None,
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 # CORS middleware - allow all for now
@@ -68,12 +69,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(essays_router)
-app.include_router(ai_router)
-app.include_router(speaking_router)
-app.include_router(admin_router)
-app.include_router(dashboard_router)
+# Include routers for available features
+app.include_router(essays_router)           # Writing essays
+app.include_router(ai_router)               # AI grading
+app.include_router(speaking_router)         # Speaking practice
+app.include_router(admin_router)            # Admin features
+app.include_router(dashboard_router)        # User dashboard
 
 # --- BASIC ROUTES ---
 @app.get("/")
@@ -83,8 +84,22 @@ async def root():
         "version": settings.version,
         "status": "running",
         "environment": "production" if not settings.debug else "development",
-        "features": ["Authentication", "Essay Management", "AI Grading", "Database"],
-        "ai_enabled": bool(settings.openai_api_key and settings.openai_api_key.startswith("sk-"))
+        "features": [
+            "🎯 AI-Powered Learning",
+            "✍️ Writing Analysis",
+            "🎤 Speaking Assessment",
+            "📊 Progress Tracking",
+            "🤖 Personalized Learning"
+        ],
+        "endpoints": {
+            "authentication": "/api/auth",
+            "writing": "/api/essays",
+            "speaking": "/api/speaking",
+            "dashboard": "/api/dashboard",
+            "admin": "/api/admin"
+        },
+        "ai_enabled": bool(settings.openai_api_key and settings.openai_api_key.startswith("sk-")),
+        "documentation": "/docs"
     }
 
 @app.get("/health")
@@ -101,7 +116,12 @@ async def health_check():
         "database": "connected" if db_healthy else "disconnected",
         "ai": "available" if settings.openai_api_key else "unavailable",
         "app": settings.app_name,
-        "version": settings.version
+        "version": settings.version,
+        "features": {
+            "writing": "active",
+            "speaking": "active",
+            "ai_grading": "active"
+        }
     }
 
 # --- AUTHENTICATION ROUTES ---
@@ -119,7 +139,8 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
             "message": "User created successfully",
             "user_id": new_user.id,
             "email": new_user.email,
-            "username": new_user.username
+            "username": new_user.username,
+            "welcome_message": "Welcome to the IELTS AI Learning Platform! 🎓"
         }
     except HTTPException:
         raise
@@ -146,7 +167,13 @@ async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
         
         return {
             "access_token": access_token,
-            "token_type": "bearer"
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "full_name": user.full_name,
+                "username": user.username
+            }
         }
     except HTTPException:
         raise
@@ -163,16 +190,54 @@ async def get_current_user_info(current_user: User = Depends(get_current_active_
         "username": current_user.username,
         "full_name": current_user.full_name,
         "user_type": current_user.user_type,
-        "created_at": current_user.created_at.isoformat()
+        "created_at": current_user.created_at.isoformat(),
+        "platform_features": [
+            "Writing Analysis with AI Grading",
+            "Speaking Assessment and Feedback",
+            "Progress Tracking and Analytics",
+            "Personalized Learning Experience"
+        ]
     }
 
-# --- DEMO ROUTES ---
+# --- DEMO & TEST ROUTES ---
 @app.get("/api/demo/protected")
 async def protected_demo(current_user: User = Depends(get_current_active_user)):
     return {
-        "message": f"Hello {current_user.full_name}! This is a protected endpoint.",
+        "message": f"Hello {current_user.full_name}! Welcome to the IELTS AI platform.",
         "user_id": current_user.id,
-        "user_type": current_user.user_type
+        "user_type": current_user.user_type,
+        "available_features": [
+            "✍️ AI-powered writing analysis",
+            "🎤 Speaking assessment and tips",
+            "📊 Detailed progress tracking",
+            "🤖 Personalized learning recommendations"
+        ]
+    }
+
+@app.get("/api/features")
+async def get_platform_features():
+    """Get all available platform features"""
+    return {
+        "writing": {
+            "description": "AI-powered essay analysis",
+            "features": ["AI grading", "Band scoring", "Grammar analysis", "Improvement suggestions"],
+            "endpoint": "/api/essays"
+        },
+        "speaking": {
+            "description": "Speaking assessment and practice",
+            "features": ["Audio recording", "Fluency analysis", "Pronunciation feedback", "Part-specific tips"],
+            "endpoint": "/api/speaking"
+        },
+        "dashboard": {
+            "description": "Progress and performance tracking",
+            "features": ["Skill breakdown", "Band prediction", "Study statistics", "Achievement tracking"],
+            "endpoint": "/api/dashboard"
+        },
+        "ai_grading": {
+            "description": "Advanced AI analysis",
+            "features": ["Free AI grading", "Detailed feedback", "IELTS band scoring", "Writing improvement tips"],
+            "endpoint": "/api/ai"
+        }
     }
 
 if __name__ == "__main__":
