@@ -1,128 +1,156 @@
-from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
+import os
+import logging
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
-import logging
-import os
+import structlog
 
 from config.settings import settings
-from app.database import init_db, get_db, check_db_health, close_db
+from app.database import init_db, get_db
 from app.api.auth.auth import AuthService, UserCreate, UserLogin, Token, get_current_active_user
-from app.models.models import User
-
-# Import all routers
 from app.api.routes.essays import router as essays_router
 from app.api.routes.ai_grading import router as ai_router
 from app.api.routes.speaking import router as speaking_router
 from app.api.routes.admin import router as admin_router
 from app.api.routes.dashboard import router as dashboard_router
+from app.models.models import User
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configure structured logging
+structlog.configure(
+    processors=[
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        structlog.processors.JSONRenderer()
+    ],
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    wrapper_class=structlog.stdlib.BoundLogger,
+    cache_logger_on_first_use=True,
+)
+
+logger = structlog.get_logger()
+
+# Create uploads directory
+os.makedirs(settings.upload_folder, exist_ok=True)
 
 # Lifespan events
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info(f"🚀 Starting {settings.app_name}")
+    logger.info("Starting application", app_name=settings.app_name, environment=settings.environment)
     
-    # Initialize database
     try:
         await init_db()
-        logger.info("✅ Database initialized")
+        logger.info("Database initialized successfully")
     except Exception as e:
-        logger.error(f"❌ Database initialization failed: {e}")
-        # Don't raise, let the app start anyway for health checks
-    
-    # Create upload directory
-    try:
-        os.makedirs(settings.upload_folder, exist_ok=True)
-        logger.info(f"📁 Upload folder ready: {settings.upload_folder}")
-    except Exception as e:
-        logger.warning(f"Could not create upload folder: {e}")
+        logger.error("Failed to initialize database", error=str(e))
+        raise
     
     yield
     
-    # Cleanup
-    logger.info("👋 Shutting down gracefully")
-    try:
-        await close_db()
-    except Exception as e:
-        logger.error(f"Error closing database: {e}")
+    logger.info("Application shutdown complete")
 
+# Create FastAPI app
 app = FastAPI(
     title=settings.app_name,
     version=settings.version,
-    description="Complete IELTS AI Learning Platform - Reading, Listening, Writing, Speaking & AI Curriculum",
+    description="AI-powered language learning backend with essay grading and speaking analysis",
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if settings.debug else None,
+    redoc_url="/redoc" if settings.debug else None,
+    openapi_url="/openapi.json" if settings.debug else None
 )
 
-# CORS middleware - allow all for now
+# Security middleware
+if settings.is_production:
+    app.add_middleware(
+        TrustedHostMiddleware, 
+        allowed_hosts=["*"]  # Configure with your domain in production
+    )
+
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=settings.allowed_methods,
+    allow_headers=settings.allowed_headers,
 )
 
-# Include routers for available features
-app.include_router(essays_router)           # Writing essays
-app.include_router(ai_router)               # AI grading
-app.include_router(speaking_router)         # Speaking practice
-app.include_router(admin_router)            # Admin features
-app.include_router(dashboard_router)        # User dashboard
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error("Unhandled exception", 
+                path=request.url.path, 
+                method=request.method,
+                error=str(exc),
+                exc_info=True)
+    
+    if settings.debug:
+        raise exc
+    
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"}
+    )
 
-# --- BASIC ROUTES ---
+# Health check endpoint (always available)
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring"""
+    try:
+        # Test database connection
+        from app.database import async_engine
+        async with async_engine.connect() as conn:
+            await conn.execute("SELECT 1")
+        
+        db_status = "healthy"
+    except Exception as e:
+        logger.error("Database health check failed", error=str(e))
+        db_status = "unhealthy"
+    
+    health_status = {
+        "status": "healthy" if db_status == "healthy" else "unhealthy",
+        "database": db_status,
+        "environment": settings.environment,
+        "version": settings.version
+    }
+    
+    if settings.openai_api_key:
+        health_status["ai"] = "configured"
+    else:
+        health_status["ai"] = "not_configured"
+    
+    return health_status
+
+# Root endpoint
 @app.get("/")
 async def root():
     return {
         "message": f"Welcome to {settings.app_name}",
         "version": settings.version,
         "status": "running",
-        "environment": "production" if not settings.debug else "development",
-        "features": [
-            "🎯 AI-Powered Learning",
-            "✍️ Writing Analysis",
-            "🎤 Speaking Assessment",
-            "📊 Progress Tracking",
-            "🤖 Personalized Learning"
-        ],
-        "endpoints": {
-            "authentication": "/api/auth",
-            "writing": "/api/essays",
-            "speaking": "/api/speaking",
-            "dashboard": "/api/dashboard",
-            "admin": "/api/admin"
-        },
-        "ai_enabled": bool(settings.openai_api_key and settings.openai_api_key.startswith("sk-")),
-        "documentation": "/docs"
+        "environment": settings.environment,
+        "features": ["Authentication", "Essay Management", "AI Grading", "Speaking Analysis"],
+        "ai_enabled": bool(settings.openai_api_key and settings.openai_api_key.startswith("sk-"))
     }
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for Render"""
-    try:
-        db_healthy = await check_db_health()
-    except Exception as e:
-        logger.error(f"Health check database error: {e}")
-        db_healthy = False
-    
-    return {
-        "status": "healthy" if db_healthy else "degraded",
-        "database": "connected" if db_healthy else "disconnected",
-        "ai": "available" if settings.openai_api_key else "unavailable",
-        "app": settings.app_name,
-        "version": settings.version,
-        "features": {
-            "writing": "active",
-            "speaking": "active",
-            "ai_grading": "active"
-        }
-    }
+# Include routers
+app.include_router(essays_router)
+app.include_router(ai_router)
+app.include_router(speaking_router)
+app.include_router(admin_router)
+app.include_router(dashboard_router)
 
 # --- AUTHENTICATION ROUTES ---
 @app.post("/api/auth/register", response_model=dict)
@@ -135,17 +163,18 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
         
         new_user = await AuthService.create_user(db, user_data)
         
+        logger.info("User registered successfully", user_id=new_user.id, email=new_user.email)
+        
         return {
             "message": "User created successfully",
             "user_id": new_user.id,
             "email": new_user.email,
-            "username": new_user.username,
-            "welcome_message": "Welcome to the IELTS AI Learning Platform! 🎓"
+            "username": new_user.username
         }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Registration failed: {e}")
+        logger.error("User registration failed", error=str(e))
         raise HTTPException(status_code=500, detail="Registration failed")
 
 @app.post("/api/auth/login", response_model=Token)
@@ -165,20 +194,22 @@ async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
             data={"sub": user.email}, expires_delta=access_token_expires
         )
         
+        logger.info("User logged in successfully", user_id=user.id, email=user.email)
+        
         return {
             "access_token": access_token,
             "token_type": "bearer",
             "user": {
                 "id": user.id,
                 "email": user.email,
-                "full_name": user.full_name,
-                "username": user.username
+                "username": user.username,
+                "full_name": user.full_name
             }
         }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Login failed: {e}")
+        logger.error("Login failed", email=login_data.email, error=str(e))
         raise HTTPException(status_code=500, detail="Login failed")
 
 @app.get("/api/auth/me")
@@ -190,56 +221,19 @@ async def get_current_user_info(current_user: User = Depends(get_current_active_
         "username": current_user.username,
         "full_name": current_user.full_name,
         "user_type": current_user.user_type,
-        "created_at": current_user.created_at.isoformat(),
-        "platform_features": [
-            "Writing Analysis with AI Grading",
-            "Speaking Assessment and Feedback",
-            "Progress Tracking and Analytics",
-            "Personalized Learning Experience"
-        ]
+        "created_at": current_user.created_at.isoformat()
     }
 
-# --- DEMO & TEST ROUTES ---
-@app.get("/api/demo/protected")
-async def protected_demo(current_user: User = Depends(get_current_active_user)):
-    return {
-        "message": f"Hello {current_user.full_name}! Welcome to the IELTS AI platform.",
-        "user_id": current_user.id,
-        "user_type": current_user.user_type,
-        "available_features": [
-            "✍️ AI-powered writing analysis",
-            "🎤 Speaking assessment and tips",
-            "📊 Detailed progress tracking",
-            "🤖 Personalized learning recommendations"
-        ]
-    }
-
-@app.get("/api/features")
-async def get_platform_features():
-    """Get all available platform features"""
-    return {
-        "writing": {
-            "description": "AI-powered essay analysis",
-            "features": ["AI grading", "Band scoring", "Grammar analysis", "Improvement suggestions"],
-            "endpoint": "/api/essays"
-        },
-        "speaking": {
-            "description": "Speaking assessment and practice",
-            "features": ["Audio recording", "Fluency analysis", "Pronunciation feedback", "Part-specific tips"],
-            "endpoint": "/api/speaking"
-        },
-        "dashboard": {
-            "description": "Progress and performance tracking",
-            "features": ["Skill breakdown", "Band prediction", "Study statistics", "Achievement tracking"],
-            "endpoint": "/api/dashboard"
-        },
-        "ai_grading": {
-            "description": "Advanced AI analysis",
-            "features": ["Free AI grading", "Detailed feedback", "IELTS band scoring", "Writing improvement tips"],
-            "endpoint": "/api/ai"
-        }
-    }
+# Serve static files in production
+if not settings.debug:
+    app.mount("/static", StaticFiles(directory="static"), name="static")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host=settings.host, port=settings.port)
+    uvicorn.run(
+        "app.main:app",
+        host=settings.host,
+        port=settings.port,
+        log_level=settings.log_level.lower(),
+        access_log=True
+    )
