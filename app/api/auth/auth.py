@@ -9,7 +9,7 @@ from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
 
 from app.database import get_db
-from app.models.models import User, UserType
+from app.models.models import User
 from config.settings import settings
 
 # Password hashing

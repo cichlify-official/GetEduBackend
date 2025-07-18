@@ -25,7 +25,9 @@ class Settings(BaseSettings):
     secret_key: str = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440  # 24 hours
-    
+
+    health_check_path: str = "/health"
+
     # CORS
     allowed_origins: List[str] = ["*"]  # Configure properly in production
     allowed_methods: List[str] = ["*"]

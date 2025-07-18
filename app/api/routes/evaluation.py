@@ -4,18 +4,34 @@ from pydantic import BaseModel
 router = APIRouter()
 
 class EvaluationInput(BaseModel):
-    student_name: str
-    scores: dict  # e.g., {"math": 80, "reading": 65, "writing": 55}
+    grammar: int
+    coherence: int
+    vocabulary: int
+    fluency: int
 
-@router.post("/evaluate")
-def evaluate(input: EvaluationInput):
-    strengths = [k for k, v in input.scores.items() if v >= 70]
-    weaknesses = [k for k, v in input.scores.items() if v < 70]
-    
-    recommendations = [f"Focus on improving your {w} skills." for w in weaknesses]
+@router.post("/recommendations")
+def evaluate_skills(data: EvaluationInput):
+    strengths = []
+    weaknesses = []
+
+    for skill, score in data.dict().items():
+        if score >= 7:
+            strengths.append(skill)
+        elif score <= 5:
+            weaknesses.append(skill)
+
+    recommendations = []
+    for w in weaknesses:
+        if w == "grammar":
+            recommendations.append("Focus on sentence structure and verb tenses.")
+        elif w == "coherence":
+            recommendations.append("Practice organizing ideas clearly.")
+        elif w == "vocabulary":
+            recommendations.append("Learn more topic-specific words.")
+        elif w == "fluency":
+            recommendations.append("Practice speaking under time constraints.")
 
     return {
-        "student": input.student_name,
         "strengths": strengths,
         "weaknesses": weaknesses,
         "recommendations": recommendations

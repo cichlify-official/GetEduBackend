@@ -12,10 +12,26 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from fastapi import FastAPI
 from app.api.routes import evaluation
+from app.api.routes import writing, speaking, course
+from dotenv import load_dotenv
+load_dotenv()
+
+from app.api.routes.dependencies import get_current_user
+
+from app.api.routes import recording
+
 
 
 app = FastAPI()
 app.include_router(evaluation.router)
+
+
+# Now include all routers
+app.include_router(evaluation.router, prefix="/api")
+app.include_router(writing.router, prefix="/api")
+app.include_router(speaking.router, prefix="/api")
+app.include_router(course.router, prefix="/api")
+app.include_router(recording.router)
 
 
 # Configure logging
@@ -97,25 +113,6 @@ def authenticate_user(email: str, password: str) -> Optional[User]:
         return None
     return user
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    
-    try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=["HS256"])
-        email: str = payload.get("sub")
-        if email is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-    
-    user = get_user_by_email(email=email)
-    if user is None:
-        raise credentials_exception
-    return user
 
 # Create FastAPI app
 app = FastAPI(
@@ -412,4 +409,5 @@ async def get_admin_stats(current_user: User = Depends(get_current_user)):
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", "8000"))
-    uvicorn.run("app.main:main", host="0.0.0.0", port=port)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=True)
+

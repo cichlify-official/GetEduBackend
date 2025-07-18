@@ -10,6 +10,20 @@ from app.database import get_db
 from app.models.models import User
 from app.api.auth.auth import get_current_active_user
 
+# app/api/routes/speaking.py
+
+from fastapi import APIRouter, UploadFile, File, Depends
+router = APIRouter()
+
+#@router.post("/evaluate/speaking")
+#async def evaluate_speaking(audio: UploadFile = File(...), current_user = Depends(get_current_user)):
+    # process audio, e.g., save or send to AI
+ #   return {
+  ##     "weaknesses": ["cohesion"],
+    #    "raw_scores": {"fluency": 6.5, "pronunciation": 6.0, "cohesion": 5.5}
+    #}
+
+
 router = APIRouter(prefix="/api/speaking", tags=["Speaking Tasks"])
 
 @router.post("/submit")
