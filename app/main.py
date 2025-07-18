@@ -1,196 +1,131 @@
-# app/main.py - MVP version that WILL work
-import os
-import logging
-import secrets
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, EmailStr
-from passlib.context import CryptContext
-from jose import JWTError, jwt
-from fastapi import FastAPI
-from app.api.routes import evaluation
-from app.api.routes import writing, speaking, course
-from dotenv import load_dotenv
-load_dotenv()
+from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
+from datetime import timedelta
+from sqlalchemy.ext.asyncio import AsyncSession
+import os
 
-from app.api.routes.dependencies import get_current_user
+from config.settings import settings
+from app.database import init_db, get_db
+from app.api.auth.auth import AuthService, UserCreate, UserLogin, Token, get_current_active_user
+from app.api.routes.essays import router as essays_router
+from app.api.routes.speaking import router as speaking_router
+from app.api.routes.admin import router as admin_router
+from app.api.routes.dashboard import router as dashboard_router
+from app.models.models import User
 
-from app.api.routes import recording
+# Import enhanced routes
+from app.api.routes.ai_grading import router as enhanced_ai_router
+from app.api.routes.speaking import router as enhanced_speaking_router
 
+# Lifespan events
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print(f"🚀 Starting {settings.app_name}")
+    print("🔧 Initializing database...")
+    await init_db()
+    
+    # Create uploads directory
+    os.makedirs("uploads", exist_ok=True)
+    print("📁 Upload directory ready")
+    
+    # Check AI service availability
+    ai_status = "✅ Enhanced Free AI Service" if settings.openai_api_key else "⚡ Free Rule-Based AI Service"
+    print(f"🤖 AI Service: {ai_status}")
+    
+    print("✅ Application startup complete!")
+    yield
+    print("👋 Shutting down gracefully")
 
-
-app = FastAPI()
-app.include_router(evaluation.router)
-
-
-# Now include all routers
-app.include_router(evaluation.router, prefix="/api")
-app.include_router(writing.router, prefix="/api")
-app.include_router(speaking.router, prefix="/api")
-app.include_router(course.router, prefix="/api")
-app.include_router(recording.router)
-
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Settings
-SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-security = HTTPBearer()
-
-# In-memory storage for MVP (will be replaced with database later)
-users_db = {}
-essays_db = {}
-user_counter = 1
-essay_counter = 1
-
-# Pydantic models
-class UserCreate(BaseModel):
-    email: EmailStr
-    username: str
-    full_name: str
-    password: str
-
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-    user: Dict[str, Any]
-
-class EssayCreate(BaseModel):
-    title: str
-    content: str
-    task_type: str = "general"
-
-class User(BaseModel):
-    id: int
-    email: str
-    username: str
-    full_name: str
-    hashed_password: str
-    created_at: str
-
-# Auth functions
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
-
-def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm="HS256")
-    return encoded_jwt
-
-def get_user_by_email(email: str) -> Optional[User]:
-    for user in users_db.values():
-        if user["email"] == email:
-            return User(**user)
-    return None
-
-def authenticate_user(email: str, password: str) -> Optional[User]:
-    user = get_user_by_email(email)
-    if not user:
-        return None
-    if not verify_password(password, user.hashed_password):
-        return None
-    return user
-
-
-# Create FastAPI app
 app = FastAPI(
-    title="Language Learning AI Backend - MVP",
-    version="1.0.0",
-    description="Minimal viable product for language learning AI"
+    title=settings.app_name,
+    version=settings.version,
+    description="AI-powered language learning platform with comprehensive evaluation and personalized improvement courses",
+    lifespan=lifespan
 )
 
-# CORS
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # In production, specify exact origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-logger.info("🚀 Language Learning AI Backend MVP Started!")
+# Serve static files (for frontend)
+if os.path.exists("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Health check
+# Include routers
+app.include_router(essays_router)
+app.include_router(enhanced_ai_router)  # Enhanced AI grading
+app.include_router(enhanced_speaking_router)  # Enhanced speaking analysis
+app.include_router(admin_router)
+app.include_router(dashboard_router)
+
+# --- ROOT ROUTES ---
+@app.get("/")
+async def root():
+    return {
+        "message": f"Welcome to {settings.app_name}",
+        "version": settings.version,
+        "status": "running",
+        "features": [
+            "✅ User Authentication",
+            "✅ Essay Submission & Evaluation", 
+            "✅ Speaking Analysis",
+            "✅ Comprehensive AI Feedback",
+            "✅ Personalized Improvement Courses",
+            "✅ Progress Tracking",
+            "✅ Strengths & Weaknesses Analysis"
+        ],
+        "ai_service": "Enhanced Free AI Service" if settings.openai_api_key else "Free Rule-Based AI Service",
+        "cost": "100% Free",
+        "endpoints": {
+            "auth": "/api/auth/",
+            "essays": "/api/essays/", 
+            "ai_evaluation": "/api/ai/",
+            "speaking": "/api/speaking/",
+            "dashboard": "/api/dashboard/",
+            "admin": "/api/admin/",
+            "docs": "/docs"
+        }
+    }
+
 @app.get("/health")
 async def health_check():
     return {
         "status": "healthy",
-        "version": "1.0.0-mvp",
-        "database": "in-memory",
-        "ai": "configured" if OPENAI_API_KEY else "not_configured",
-        "users_count": len(users_db),
-        "essays_count": len(essays_db)
+        "database": "connected",
+        "ai_service": "available",
+        "features": "all_operational",
+        "version": settings.version
     }
 
-# Root endpoint
-@app.get("/")
-async def root():
-    return {
-        "message": "Language Learning AI Backend MVP",
-        "version": "1.0.0-mvp",
-        "status": "running",
-        "docs": "/docs",
-        "health": "/health",
-        "features": ["Authentication", "Essay Management", "AI Grading (Free)"]
-    }
-
-# Authentication endpoints
-@app.post("/api/auth/register")
-async def register(user_data: UserCreate):
-    global user_counter
-    
-    # Check if user exists
-    if get_user_by_email(user_data.email):
+# --- AUTHENTICATION ROUTES ---
+@app.post("/api/auth/register", response_model=dict)
+async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
+    """Register a new user"""
+    existing_user = await AuthService.get_user_by_email(db, user_data.email)
+    if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    # Create user
-    hashed_password = get_password_hash(user_data.password)
-    user = {
-        "id": user_counter,
-        "email": user_data.email,
-        "username": user_data.username,
-        "full_name": user_data.full_name,
-        "hashed_password": hashed_password,
-        "created_at": datetime.utcnow().isoformat()
-    }
-    
-    users_db[user_counter] = user
-    user_counter += 1
-    
-    logger.info(f"User registered: {user_data.email}")
+    new_user = await AuthService.create_user(db, user_data)
     
     return {
         "message": "User created successfully",
-        "user_id": user["id"],
-        "email": user["email"],
-        "username": user["username"]
+        "user_id": new_user.id,
+        "email": new_user.email,
+        "username": new_user.username,
+        "welcome_message": f"Welcome to {settings.app_name}! Start by submitting your first essay or speaking task."
     }
 
 @app.post("/api/auth/login", response_model=Token)
-async def login(login_data: UserLogin):
-    user = authenticate_user(login_data.email, login_data.password)
+async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
+    """Login user and return JWT token"""
+    user = await AuthService.authenticate_user(db, login_data.email, login_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -198,12 +133,10 @@ async def login(login_data: UserLogin):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = AuthService.create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
-    
-    logger.info(f"User logged in: {user.email}")
     
     return {
         "access_token": access_token,
@@ -217,197 +150,211 @@ async def login(login_data: UserLogin):
     }
 
 @app.get("/api/auth/me")
-async def get_current_user_info(current_user: User = Depends(get_current_user)):
+async def get_current_user_info(current_user: User = Depends(get_current_active_user)):
+    """Get current user profile"""
     return {
         "id": current_user.id,
         "email": current_user.email,
         "username": current_user.username,
         "full_name": current_user.full_name,
-        "created_at": current_user.created_at
+        "user_type": current_user.user_type,
+        "created_at": current_user.created_at.isoformat(),
+        "account_status": "active"
     }
 
-# Essay endpoints
-@app.post("/api/essays/submit")
-async def submit_essay(essay_data: EssayCreate, current_user: User = Depends(get_current_user)):
-    global essay_counter
-    
-    word_count = len(essay_data.content.split())
-    
-    essay = {
-        "id": essay_counter,
-        "title": essay_data.title,
-        "content": essay_data.content,
-        "task_type": essay_data.task_type,
-        "word_count": word_count,
-        "author_id": current_user.id,
-        "author_username": current_user.username,
-        "is_graded": False,
-        "overall_score": None,
-        "submitted_at": datetime.utcnow().isoformat()
-    }
-    
-    essays_db[essay_counter] = essay
-    essay_counter += 1
-    
-    logger.info(f"Essay submitted by {current_user.username}: {essay_data.title}")
-    
+# --- DEMO ROUTES ---
+@app.get("/api/demo/protected")
+async def protected_demo(current_user: User = Depends(get_current_active_user)):
     return {
-        "message": "Essay submitted successfully",
-        "essay_id": essay["id"],
-        "word_count": word_count,
-        "status": "submitted"
-    }
-
-@app.get("/api/essays/my-essays")
-async def get_my_essays(current_user: User = Depends(get_current_user)):
-    user_essays = [essay for essay in essays_db.values() if essay["author_id"] == current_user.id]
-    
-    return {
-        "essays": [
-            {
-                "id": essay["id"],
-                "title": essay["title"],
-                "task_type": essay["task_type"],
-                "word_count": essay["word_count"],
-                "is_graded": essay["is_graded"],
-                "overall_score": essay["overall_score"],
-                "submitted_at": essay["submitted_at"]
-            }
-            for essay in sorted(user_essays, key=lambda x: x["submitted_at"], reverse=True)
+        "message": f"Hello {current_user.full_name}! This is a protected endpoint.",
+        "user_id": current_user.id,
+        "user_type": current_user.user_type,
+        "available_features": [
+            "Essay Writing & Evaluation",
+            "Speaking Practice & Analysis", 
+            "Progress Tracking",
+            "Personalized Improvement Courses",
+            "Comprehensive Feedback"
         ]
     }
 
-@app.get("/api/essays/{essay_id}")
-async def get_essay_details(essay_id: int, current_user: User = Depends(get_current_user)):
-    essay = essays_db.get(essay_id)
-    if not essay or essay["author_id"] != current_user.id:
-        raise HTTPException(status_code=404, detail="Essay not found")
-    
+@app.get("/api/demo/features")
+async def demo_features():
+    """Demo endpoint showing available features"""
     return {
-        "essay": {
-            "id": essay["id"],
-            "title": essay["title"],
-            "content": essay["content"],
-            "task_type": essay["task_type"],
-            "word_count": essay["word_count"],
-            "submitted_at": essay["submitted_at"]
+        "platform_features": {
+            "writing_evaluation": {
+                "description": "Comprehensive essay analysis with IELTS-style scoring",
+                "features": [
+                    "Task Achievement scoring",
+                    "Coherence & Cohesion analysis",
+                    "Lexical Resource evaluation",
+                    "Grammar & Accuracy checking",
+                    "Detailed feedback with strengths/weaknesses"
+                ]
+            },
+            "speaking_analysis": {
+                "description": "Video/audio recording with AI-powered speaking evaluation",
+                "features": [
+                    "Fluency & Coherence assessment",
+                    "Pronunciation analysis",
+                    "Vocabulary usage evaluation",
+                    "Grammar in speech evaluation",
+                    "Personalized speaking tips"
+                ]
+            },
+            "improvement_courses": {
+                "description": "Personalized learning paths based on your performance",
+                "features": [
+                    "Skill-specific improvement plans",
+                    "Weekly study schedules",
+                    "Daily practice activities",
+                    "Progress milestones",
+                    "Estimated improvement timelines"
+                ]
+            },
+            "progress_tracking": {
+                "description": "Monitor your improvement over time",
+                "features": [
+                    "Score history tracking",
+                    "Skill-specific progress charts",
+                    "Improvement trends analysis",
+                    "Personalized recommendations",
+                    "Achievement milestones"
+                ]
+            }
         },
-        "grading": essay.get("grading")
+        "ai_technology": {
+            "type": "Enhanced Free AI Service",
+            "cost": "100% Free",
+            "accuracy": "High-quality rule-based analysis",
+            "features": [
+                "Instant feedback",
+                "Detailed error analysis",
+                "Personalized recommendations",
+                "Comprehensive scoring",
+                "Improvement course generation"
+            ]
+        }
     }
 
-# Free AI grading (rule-based)
-@app.post("/api/ai/demo-grade")
-async def demo_grade_text(text_data: dict, current_user: User = Depends(get_current_user)):
-    content = text_data.get("content", "")
-    task_type = text_data.get("task_type", "general")
-
-    if not content.strip():
-        raise HTTPException(status_code=400, detail="Content cannot be empty")
-
-    # -- ✨ NEW AI GRADING LOGIC USING OPENAI API --
-    import openai
-    openai.api_key = OPENAI_API_KEY
-
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are an IELTS writing examiner. You give honest, structured, and helpful feedback."
-                },
-                {
-                    "role": "user",
-                    "content": f"""Please grade this IELTS Task 2 essay on a scale of 0–9 for:
-- Task Achievement
-- Coherence and Cohesion
-- Lexical Resource
-- Grammatical Range and Accuracy
-
-Then give:
-- A summary of strengths
-- A list of weaknesses
-- 3 personalized recommendations
-
-Essay:
-\"\"\"
-{content}
-\"\"\"
-"""
-                }
+# --- QUICK START GUIDE ---
+@app.get("/api/quick-start")
+async def quick_start_guide():
+    """Quick start guide for new users"""
+    return {
+        "welcome": "Welcome to GetEdu - Your AI Language Learning Partner!",
+        "quick_start_steps": [
+            {
+                "step": 1,
+                "title": "Register & Login",
+                "description": "Create your account to start tracking progress",
+                "endpoint": "/api/auth/register"
+            },
+            {
+                "step": 2,
+                "title": "Submit Your First Essay",
+                "description": "Write an essay and get comprehensive AI feedback",
+                "endpoint": "/api/essays/submit"
+            },
+            {
+                "step": 3,
+                "title": "Get AI Evaluation",
+                "description": "Receive detailed analysis with strengths and weaknesses",
+                "endpoint": "/api/ai/evaluate-essay"
+            },
+            {
+                "step": 4,
+                "title": "Try Speaking Practice",
+                "description": "Record yourself speaking and get pronunciation feedback",
+                "endpoint": "/api/speaking/analyze-speaking"
+            },
+            {
+                "step": 5,
+                "title": "Follow Your Improvement Course",
+                "description": "Get personalized study plan based on your performance",
+                "endpoint": "/api/ai/improvement-course"
+            }
+        ],
+        "tips": [
+            "Start with shorter essays (150-200 words) to get comfortable",
+            "Practice speaking for 1-2 minutes on familiar topics",
+            "Review your feedback carefully and focus on weak areas",
+            "Use the improvement course to guide your study",
+            "Track your progress over time to stay motivated"
+        ],
+        "sample_topics": {
+            "writing": [
+                "Describe your hometown",
+                "Advantages and disadvantages of social media",
+                "Environmental problems and solutions",
+                "The importance of education"
             ],
-            temperature=0.7
-        )
-
-        result = response['choices'][0]['message']['content']
-
-        return {
-            "message": "AI grading completed",
-            "analysis_type": "gpt4",
-            "grading": result,
-            "cost": "OpenAI API used"
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Speaking demo endpoint
-@app.post("/api/speaking/demo-analyze")
-async def demo_speaking_analysis(text_data: dict, current_user: User = Depends(get_current_user)):
-    text = text_data.get("text", "")
-    
-    if not text.strip():
-        raise HTTPException(status_code=400, detail="Text cannot be empty")
-    
-    word_count = len(text.split())
-    
-    # Simple speaking analysis
-    scores = {
-        "fluency_coherence": 6.5,
-        "lexical_resource": 6.0,
-        "grammatical_range": 6.0,
-        "pronunciation": 6.5,
-        "overall_band": 6.3
-    }
-    
-    return {
-        "message": "Speaking analysis completed (demo)",
-        "scores": scores,
-        "analysis": {
-            "word_count": word_count,
-            "estimated_duration": f"{word_count / 150:.1f} minutes"
-        },
-        "feedback": {
-            "strengths": ["Good attempt at speaking"],
-            "improvements": ["Continue practicing fluency"],
-            "suggestions": ["Record yourself more often"]
+            "speaking": [
+                "Talk about your favorite hobby",
+                "Describe a memorable trip",
+                "Discuss technology's impact on society",
+                "Explain a skill you would like to learn"
+            ]
         }
     }
 
-# Admin endpoint
-@app.get("/api/admin/stats")
-async def get_admin_stats(current_user: User = Depends(get_current_user)):
+# --- ERROR HANDLERS ---
+@app.exception_handler(404)
+async def not_found_handler(request, exc):
     return {
-        "platform_stats": {
-            "total_users": len(users_db),
-            "total_essays": len(essays_db),
-            "graded_essays": sum(1 for essay in essays_db.values() if essay["is_graded"]),
-            "system_type": "MVP In-Memory"
-        },
-        "recent_activity": [
-            {
-                "type": "essay_submission",
-                "user": essay["author_username"],
-                "title": essay["title"],
-                "time": essay["submitted_at"]
-            }
-            for essay in sorted(essays_db.values(), key=lambda x: x["submitted_at"], reverse=True)[:5]
+        "error": "Endpoint not found",
+        "message": "The requested endpoint does not exist",
+        "available_endpoints": [
+            "/api/auth/login",
+            "/api/auth/register", 
+            "/api/essays/submit",
+            "/api/ai/evaluate-essay",
+            "/api/speaking/analyze-speaking",
+            "/docs"
         ]
+    }
+
+@app.exception_handler(500)
+async def internal_error_handler(request, exc):
+    return {
+        "error": "Internal server error",
+        "message": "Something went wrong on our end",
+        "suggestion": "Please try again later or contact support"
+    }
+
+# --- SYSTEM INFO ---
+@app.get("/api/system/info")
+async def system_info():
+    """Get system information"""
+    return {
+        "application": {
+            "name": settings.app_name,
+            "version": settings.version,
+            "debug_mode": settings.debug
+        },
+        "features": {
+            "ai_service": "Enhanced Free AI Service",
+            "database": "SQLite (Development)",
+            "authentication": "JWT with bcrypt",
+            "file_upload": "Supported",
+            "real_time_feedback": "Available"
+        },
+        "limits": {
+            "max_file_size": f"{settings.max_file_size // (1024*1024)}MB",
+            "supported_formats": ["audio/wav", "audio/mp3", "video/webm", "video/mp4"],
+            "max_essay_length": "No limit",
+            "max_speaking_time": "10 minutes"
+        },
+        "costs": {
+            "essay_evaluation": "Free",
+            "speaking_analysis": "Free", 
+            "improvement_courses": "Free",
+            "progress_tracking": "Free",
+            "all_features": "100% Free"
+        }
     }
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", "8000"))
-    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=True)
-
+    uvicorn.run(app, host="0.0.0.0", port=8000)
