@@ -10,6 +10,13 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from jose import JWTError, jwt
+from fastapi import FastAPI
+from app.api.routes import evaluation
+
+
+app = FastAPI()
+app.include_router(evaluation.router)
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -296,45 +303,57 @@ async def get_essay_details(essay_id: int, current_user: User = Depends(get_curr
 async def demo_grade_text(text_data: dict, current_user: User = Depends(get_current_user)):
     content = text_data.get("content", "")
     task_type = text_data.get("task_type", "general")
-    
+
     if not content.strip():
         raise HTTPException(status_code=400, detail="Content cannot be empty")
-    
-    # Simple rule-based grading
-    word_count = len(content.split())
-    sentence_count = len([s for s in content.split('.') if s.strip()])
-    
-    # Basic scoring
-    task_score = min(8.0, 5.0 + (word_count / 50))
-    coherence_score = min(8.0, 5.0 + (sentence_count / 5))
-    lexical_score = min(8.0, 5.0 + (len(set(content.lower().split())) / word_count * 4)) if word_count > 0 else 5.0
-    grammar_score = 6.0 + (0.5 if ',' in content else 0) + (0.5 if any(word in content.lower() for word in ['however', 'therefore', 'furthermore']) else 0)
-    
-    overall_band = round((task_score + coherence_score + lexical_score + grammar_score) / 4, 1)
-    
-    grading_result = {
-        "scores": {
-            "task_achievement": round(task_score, 1),
-            "coherence_cohesion": round(coherence_score, 1),
-            "lexical_resource": round(lexical_score, 1),
-            "grammar_accuracy": round(grammar_score, 1),
-            "overall_band": overall_band
-        },
-        "feedback": {
-            "strengths": ["Good effort on the task", "Appropriate length"],
-            "improvements": ["Could use more varied vocabulary", "Consider more complex sentences"],
-            "suggestions": ["Read more academic texts", "Practice linking words"]
+
+    # -- ✨ NEW AI GRADING LOGIC USING OPENAI API --
+    import openai
+    openai.api_key = OPENAI_API_KEY
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an IELTS writing examiner. You give honest, structured, and helpful feedback."
+                },
+                {
+                    "role": "user",
+                    "content": f"""Please grade this IELTS Task 2 essay on a scale of 0–9 for:
+- Task Achievement
+- Coherence and Cohesion
+- Lexical Resource
+- Grammatical Range and Accuracy
+
+Then give:
+- A summary of strengths
+- A list of weaknesses
+- 3 personalized recommendations
+
+Essay:
+\"\"\"
+{content}
+\"\"\"
+"""
+                }
+            ],
+            temperature=0.7
+        )
+
+        result = response['choices'][0]['message']['content']
+
+        return {
+            "message": "AI grading completed",
+            "analysis_type": "gpt4",
+            "grading": result,
+            "cost": "OpenAI API used"
         }
-    }
-    
-    logger.info(f"Demo grading completed for {current_user.username}")
-    
-    return {
-        "message": "Demo grading completed",
-        "analysis_type": "rule_based_mvp",
-        "cost": 0.0,
-        "grading": grading_result
-    }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # Speaking demo endpoint
 @app.post("/api/speaking/demo-analyze")
@@ -393,4 +412,4 @@ async def get_admin_stats(current_user: User = Depends(get_current_user)):
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", "8000"))
-    uvicorn.run("app.main:app", host="0.0.0.0", port=port)
+    uvicorn.run("app.main:main", host="0.0.0.0", port=port)

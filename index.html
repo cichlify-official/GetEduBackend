@@ -1,0 +1,1430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IELTS AI Learning Platform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        /* Header */
+        .header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: white;
+            text-decoration: none;
+        }
+
+        .user-info {
+            color: white;
+            font-weight: 500;
+        }
+
+        /* Main Container */
+        .container {
+            display: flex;
+            max-width: 1400px;
+            margin: 0 auto;
+            min-height: calc(100vh - 80px);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            margin: 2rem 0 2rem 2rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 2rem 0;
+            position: sticky;
+            top: 100px;
+            height: fit-content;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem 2rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: rgba(102, 126, 234, 0.1);
+            border-left-color: #667eea;
+        }
+
+        .nav-item.active {
+            background: rgba(102, 126, 234, 0.15);
+            border-left-color: #667eea;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .nav-icon {
+            font-size: 1.2rem;
+            margin-right: 1rem;
+            width: 24px;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin: 2rem;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .content-header {
+            padding: 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .content-title {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .content-subtitle {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+
+        .content-body {
+            padding: 2rem;
+        }
+
+        /* Dashboard Cards */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+        }
+
+        .card-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .card-title {
+            font-size: 1.3rem;
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+
+        .card-description {
+            color: #666;
+            margin-bottom: 1.5rem;
+            line-height: 1.5;
+        }
+
+        .card-stats {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #667eea;
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        /* Buttons */
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+
+        .btn-secondary:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f44336 0%, #da190b 100%);
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            resize: vertical;
+            min-height: 120px;
+            font-family: inherit;
+        }
+
+        .form-textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        /* Voice Recording */
+        .voice-recorder {
+            background: #f8f9fa;
+            border: 2px dashed #dee2e6;
+            border-radius: 15px;
+            padding: 2rem;
+            text-align: center;
+            margin: 1rem 0;
+        }
+
+        .voice-recorder.recording {
+            border-color: #dc3545;
+            background: #fff5f5;
+        }
+
+        .voice-recorder.recording .record-btn {
+            background: #dc3545;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .record-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            margin: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .waveform {
+            width: 100%;
+            height: 60px;
+            background: #e9ecef;
+            border-radius: 8px;
+            margin: 1rem 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6c757d;
+        }
+
+        /* Progress Bars */
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s ease;
+        }
+
+        /* Curriculum Section */
+        .curriculum-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .band-card {
+            background: white;
+            border-radius: 15px;
+            padding: 1.5rem;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        .band-card.locked {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .band-card.unlocked {
+            border-color: #28a745;
+        }
+
+        .band-card:hover:not(.locked) {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+        }
+
+        .band-level {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 0.5rem;
+        }
+
+        .band-requirements {
+            margin-top: 1rem;
+        }
+
+        .requirement-item {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .requirement-label {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .requirement-value {
+            color: #666;
+            margin-top: 0.25rem;
+        }
+
+        /* Analysis Results */
+        .analysis-results {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            margin: 2rem 0;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        .scores-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .score-card {
+            text-align: center;
+            padding: 1.5rem;
+            background: #f8f9fa;
+            border-radius: 12px;
+        }
+
+        .score-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #667eea;
+            display: block;
+        }
+
+        .score-label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 0.5rem;
+        }
+
+        .feedback-section {
+            margin: 2rem 0;
+        }
+
+        .feedback-category {
+            margin: 1.5rem 0;
+        }
+
+        .feedback-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 0.75rem;
+        }
+
+        .feedback-list {
+            list-style: none;
+        }
+
+        .feedback-list li {
+            padding: 0.5rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+
+        .feedback-list li::before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .feedback-list.improvements li::before {
+            content: "→";
+            color: #ffc107;
+        }
+
+        .feedback-list.suggestions li::before {
+            content: "💡";
+        }
+
+        /* Footer */
+        .footer {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            color: white;
+            text-align: center;
+            padding: 2rem;
+            margin-top: 4rem;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .footer-links a {
+            color: white;
+            text-decoration: none;
+            opacity: 0.8;
+            transition: opacity 0.3s ease;
+        }
+
+        .footer-links a:hover {
+            opacity: 1;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                margin: 1rem;
+                position: static;
+            }
+
+            .main-content {
+                margin: 1rem;
+            }
+
+            .header-content {
+                padding: 0 1rem;
+            }
+
+            .content-header {
+                padding: 1.5rem;
+            }
+
+            .content-body {
+                padding: 1.5rem;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Loading Animation */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Hidden class */
+        .hidden {
+            display: none !important;
+        }
+
+        /* Status indicators */
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .timer {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #dc3545;
+            margin: 1rem 0;
+        }
+
+        .unlock-btn {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-top: 1rem;
+        }
+
+        .unlock-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(238, 90, 36, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <a href="#" class="logo">🎓 IELTS AI Platform</a>
+            <div class="user-info">Welcome to the Demo Version!</div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <nav>
+                <div class="nav-item active" onclick="showSection('dashboard')">
+                    <span class="nav-icon">📊</span>
+                    Dashboard
+                </div>
+                <div class="nav-item" onclick="showSection('writing')">
+                    <span class="nav-icon">✍️</span>
+                    Writing Practice
+                </div>
+                <div class="nav-item" onclick="showSection('speaking')">
+                    <span class="nav-icon">🎤</span>
+                    Speaking Practice
+                </div>
+                <div class="nav-item" onclick="showSection('curriculum')">
+                    <span class="nav-icon">📚</span>
+                    Curriculum
+                </div>
+                <div class="nav-item" onclick="showSection('recommendations')">
+                    <span class="nav-icon">💡</span>
+                    Recommendations
+                </div>
+                <div class="nav-item" onclick="showSection('progress')">
+                    <span class="nav-icon">📈</span>
+                    My Progress
+                </div>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard Section -->
+            <div id="dashboardSection" class="content-section">
+                <div class="content-header">
+                    <h1 class="content-title">Dashboard</h1>
+                    <p class="content-subtitle">Track your IELTS learning progress</p>
+                </div>
+                <div class="content-body">
+                    <div class="dashboard-grid">
+                        <div class="card">
+                            <span class="card-icon">✍️</span>
+                            <h3 class="card-title">Writing Practice</h3>
+                            <p class="card-description">Submit essays and get AI-powered feedback to improve your writing skills.</p>
+                            <div class="card-stats">
+                                <div class="stat">
+                                    <span class="stat-value">5.5</span>
+                                    <span class="stat-label">Current Band</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-value">6.5</span>
+                                    <span class="stat-label">Target Band</span>
+                                </div>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 60%;"></div>
+                            </div>
+                            <p style="margin-top: 1rem; color: #666;">60% towards your goal!</p>
+                        </div>
+
+                        <div class="card">
+                            <span class="card-icon">🔥</span>
+                            <h3 class="card-title">Study Streak</h3>
+                            <div class="card-stats">
+                                <div class="stat">
+                                    <span class="stat-value">7</span>
+                                    <span class="stat-label">Days</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-value">5</span>
+                                    <span class="stat-label">This Week</span>
+                                </div>
+                            </div>
+                            <p style="color: #28a745; font-weight: 600;">Keep it up! 🎉</p>
+                        </div>
+
+                        <div class="card">
+                            <span class="card-icon">🏆</span>
+                            <h3 class="card-title">Achievements</h3>
+                            <div style="text-align: left;">
+                                <p>✅ First Essay Completed</p>
+                                <p>✅ 5 Speaking Recordings</p>
+                                <p>✅ Band 5.5 Unlocked</p>
+                                <p style="color: #ffc107;">🔒 Band 6.0 - Almost there!</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="analysis-results">
+                        <h3>📈 Performance Analytics</h3>
+                        <div class="scores-grid">
+                            <div class="score-card">
+                                <span class="score-value">6.0</span>
+                                <span class="score-label">Writing Average</span>
+                            </div>
+                            <div class="score-card">
+                                <span class="score-value">5.5</span>
+                                <span class="score-label">Speaking Average</span>
+                            </div>
+                            <div class="score-card">
+                                <span class="score-value">+0.5</span>
+                                <span class="score-label">Improvement</span>
+                            </div>
+                            <div class="score-card">
+                                <span class="score-value">12</span>
+                                <span class="score-label">Total Tasks</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-links">
+                <a href="#" onclick="showSection('dashboard')">Dashboard</a>
+                <a href="#" onclick="showSection('curriculum')">Curriculum</a>
+                <a href="#" onclick="showSection('recommendations')">AI Tips</a>
+                <a href="#">About</a>
+                <a href="#">Contact</a>
+            </div>
+            <p>&copy; 2024 IELTS AI Learning Platform. Empowering your language learning journey with AI.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Global variables
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let recordingTimer = null;
+        let recordingSeconds = 0;
+        let isRecording = false;
+        let unlockedBands = ['4.0', '4.5', '5.0', '5.5'];
+
+        // Sample curriculum data
+        const curriculumData = {
+            '4.0': {
+                writing: 'Basic paragraph structure, simple vocabulary, present/past tense',
+                speaking: 'Short responses, basic vocabulary, simple sentences'
+            },
+            '4.5': {
+                writing: 'Improved structure, more vocabulary, some complex sentences',
+                speaking: 'Longer responses, better vocabulary, some linking'
+            },
+            '5.0': {
+                writing: 'Clear paragraphs, good vocabulary range, mix of sentence types',
+                speaking: 'Adequate responses, appropriate vocabulary, basic fluency'
+            },
+            '5.5': {
+                writing: 'Well-organized essays, varied vocabulary, complex structures',
+                speaking: 'Fluent responses, wide vocabulary, good linking'
+            },
+            '6.0': {
+                writing: 'Sophisticated structure, precise vocabulary, accurate grammar',
+                speaking: 'Natural delivery, flexible vocabulary, complex grammar'
+            },
+            '6.5': {
+                writing: 'Advanced organization, academic vocabulary, error-free writing',
+                speaking: 'Effortless delivery, sophisticated vocabulary, natural features'
+            },
+            '7.0': {
+                writing: 'Expert-level writing, precise language, critical thinking',
+                speaking: 'Native-like fluency, precise expression, natural intonation'
+            }
+        };
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCurriculumData();
+            showSection('dashboard');
+        });
+
+        // Navigation Functions
+        function showSection(sectionName) {
+            // Hide all sections
+            const sections = document.querySelectorAll('.content-section');
+            sections.forEach(section => section.classList.add('hidden'));
+            
+            // Show selected section
+            document.getElementById(sectionName + 'Section').classList.remove('hidden');
+            
+            // Update navigation
+            const navItems = document.querySelectorAll('.nav-item');
+            navItems.forEach(item => item.classList.remove('active'));
+            event.target.closest('.nav-item').classList.add('active');
+        }
+
+        // Word counter
+        function updateWordCount() {
+            const content = document.getElementById('essayContent').value;
+            const wordCount = content.trim().split(/\s+/).length;
+            document.getElementById('wordCount').textContent = content.trim() === '' ? 0 : wordCount;
+        }
+
+        // Essay submission
+        function submitEssay(event) {
+            event.preventDefault();
+            
+            const title = document.getElementById('essayTitle').value;
+            const content = document.getElementById('essayContent').value;
+            const taskType = document.getElementById('taskType').value;
+            const wordCount = content.trim().split(/\s+/).length;
+            
+            // Show loading
+            document.getElementById('submitBtnText').classList.add('hidden');
+            document.getElementById('submitLoading').classList.remove('hidden');
+            
+            // Simulate AI analysis
+            setTimeout(() => {
+                // Hide loading
+                document.getElementById('submitBtnText').classList.remove('hidden');
+                document.getElementById('submitLoading').classList.add('hidden');
+                
+                // Generate demo scores
+                const scores = generateDemoWritingScores(wordCount, content);
+                displayWritingResults(scores);
+                
+                // Show results
+                document.getElementById('writingResults').classList.remove('hidden');
+            }, 3000);
+        }
+
+        function generateDemoWritingScores(wordCount, content) {
+            // Basic scoring algorithm for demo
+            let baseScore = 5.0;
+            
+            // Word count bonus
+            if (wordCount >= 250) baseScore += 0.5;
+            if (wordCount >= 300) baseScore += 0.3;
+            
+            // Content analysis
+            const sentences = content.split('.').length;
+            const avgWordsPerSentence = wordCount / sentences;
+            if (avgWordsPerSentence > 15) baseScore += 0.3;
+            
+            // Vocabulary diversity
+            const words = content.toLowerCase().split(/\s+/);
+            const uniqueWords = new Set(words);
+            const diversity = uniqueWords.size / words.length;
+            if (diversity > 0.6) baseScore += 0.4;
+            
+            // Complex sentences
+            if (content.includes('however') || content.includes('therefore') || content.includes('furthermore')) {
+                baseScore += 0.3;
+            }
+            
+            const taskAchievement = Math.min(baseScore + Math.random() * 0.5, 9.0);
+            const coherence = Math.min(baseScore + Math.random() * 0.4, 9.0);
+            const lexical = Math.min(baseScore + Math.random() * 0.6, 9.0);
+            const grammar = Math.min(baseScore + Math.random() * 0.3, 9.0);
+            const overall = Math.round(((taskAchievement + coherence + lexical + grammar) / 4) * 2) / 2;
+            
+            return {
+                task_achievement: Math.round(taskAchievement * 2) / 2,
+                coherence_cohesion: Math.round(coherence * 2) / 2,
+                lexical_resource: Math.round(lexical * 2) / 2,
+                grammar_accuracy: Math.round(grammar * 2) / 2,
+                overall_band: overall,
+                feedback: {
+                    strengths: [
+                        "Good essay structure with clear paragraphs",
+                        "Appropriate use of examples",
+                        "Generally accurate grammar"
+                    ],
+                    improvements: [
+                        "Use more advanced vocabulary",
+                        "Add more linking words between ideas",
+                        "Develop paragraphs more fully"
+                    ],
+                    suggestions: [
+                        "Practice using academic vocabulary daily",
+                        "Read sample band 7+ essays for inspiration",
+                        "Time yourself to improve writing speed"
+                    ]
+                }
+            };
+        }
+
+        function displayWritingResults(scores) {
+            const scoresGrid = document.getElementById('writingScores');
+            scoresGrid.innerHTML = `
+                <div class="score-card">
+                    <span class="score-value">${scores.task_achievement}</span>
+                    <span class="score-label">Task Achievement</span>
+                </div>
+                <div class="score-card">
+                    <span class="score-value">${scores.coherence_cohesion}</span>
+                    <span class="score-label">Coherence & Cohesion</span>
+                </div>
+                <div class="score-card">
+                    <span class="score-value">${scores.lexical_resource}</span>
+                    <span class="score-label">Lexical Resource</span>
+                </div>
+                <div class="score-card">
+                    <span class="score-value">${scores.grammar_accuracy}</span>
+                    <span class="score-label">Grammar & Accuracy</span>
+                </div>
+                <div class="score-card" style="grid-column: span 2;">
+                    <span class="score-value" style="color: #28a745;">${scores.overall_band}</span>
+                    <span class="score-label">Overall Band Score</span>
+                </div>
+            `;
+            
+            const feedbackSection = document.getElementById('writingFeedback');
+            feedbackSection.innerHTML = `
+                <div class="feedback-category">
+                    <h4 class="feedback-title">💪 Strengths</h4>
+                    <ul class="feedback-list">
+                        ${scores.feedback.strengths.map(item => `<li>${item}</li>`).join('')}
+                    </ul>
+                </div>
+                <div class="feedback-category">
+                    <h4 class="feedback-title">🎯 Areas for Improvement</h4>
+                    <ul class="feedback-list improvements">
+                        ${scores.feedback.improvements.map(item => `<li>${item}</li>`).join('')}
+                    </ul>
+                </div>
+                <div class="feedback-category">
+                    <h4 class="feedback-title">💡 Suggestions</h4>
+                    <ul class="feedback-list suggestions">
+                        ${scores.feedback.suggestions.map(item => `<li>${item}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        // Voice Recording Functions
+        async function toggleRecording() {
+            if (!isRecording) {
+                await startRecording();
+            } else {
+                stopRecording();
+            }
+        }
+
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+                
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const audioPlayback = document.getElementById('audioPlayback');
+                    audioPlayback.src = audioUrl;
+                    audioPlayback.classList.remove('hidden');
+                    document.getElementById('analyzeSpeakingBtn').disabled = false;
+                };
+                
+                mediaRecorder.start();
+                isRecording = true;
+                
+                // Update UI
+                document.getElementById('voiceRecorder').classList.add('recording');
+                document.getElementById('recordBtnText').textContent = 'Stop Recording';
+                document.getElementById('recorderStatus').textContent = 'Recording in progress...';
+                document.getElementById('waveformText').textContent = '🔴 Recording...';
+                
+                // Start timer
+                recordingSeconds = 0;
+                recordingTimer = setInterval(() => {
+                    recordingSeconds++;
+                    const minutes = Math.floor(recordingSeconds / 60);
+                    const seconds = recordingSeconds % 60;
+                    document.getElementById('recordingTimer').textContent = 
+                        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }, 1000);
+                
+            } catch (error) {
+                alert('Error accessing microphone: ' + error.message);
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                isRecording = false;
+                
+                // Update UI
+                document.getElementById('voiceRecorder').classList.remove('recording');
+                document.getElementById('recordBtnText').textContent = 'Start Recording';
+                document.getElementById('recorderStatus').textContent = 'Recording completed!';
+                document.getElementById('waveformText').textContent = '✅ Recording saved';
+                
+                // Stop timer
+                clearInterval(recordingTimer);
+            }
+        }
+
+        function analyzeSpeaking() {
+            // Show loading
+            document.getElementById('analyzeBtnText').classList.add('hidden');
+            document.getElementById('analyzeLoading').classList.remove('hidden');
+            document.getElementById('analyzeSpeakingBtn').disabled = true;
+            
+            // Simulate AI analysis
+            setTimeout(() => {
+                // Hide loading
+                document.getElementById('analyzeBtnText').classList.remove('hidden');
+                document.getElementById('analyzeLoading').classList.add('hidden');
+                
+                // Generate demo scores
+                const scores = generateDemoSpeakingScores();
+                displaySpeakingResults(scores);
+                
+                // Show results
+                document.getElementById('speakingResults').classList.remove('hidden');
+            }, 4000);
+        }
+
+        function generateDemoSpeakingScores() {
+            const baseScore = 5.0 + Math.random() * 1.5;
+            
+            return {
+                fluency_coherence: Math.round((baseScore + Math.random() * 0.5) * 2) / 2,
+                lexical_resource: Math.round((baseScore + Math.random() * 0.4) * 2) / 2,
+                grammatical_range: Math.round((baseScore + Math.random() * 0.3) * 2) / 2,
+                pronunciation: Math.round((baseScore + Math.random() * 0.6) * 2) / 2,
+                overall_band: Math.round(baseScore * 2) / 2,
+                feedback: {
+                    strengths: [
+                        "Clear pronunciation of most words",
+                        "Good attempt at organizing ideas",
+                        "Appropriate pace of speaking"
+                    ],
+                    improvements: [
+                        "Reduce hesitations and fillers",
+                        "Use more varied vocabulary",
+                        "Improve sentence complexity"
+                    ],
+                    suggestions: [
+                        "Practice speaking for 2-3 minutes daily",
+                        "Record yourself and listen back",
+                        "Use discourse markers: 'well', 'actually', 'so'"
+                    ]
+                }
+            };
+        }
+
+        function displaySpeakingResults(scores) {
+            const scoresGrid = document.getElementById('speakingScores');
+            scoresGrid.innerHTML = `
+                <div class="score-card">
+                    <span class="score-value">${scores.fluency_coherence}</span>
+                    <span class="score-label">Fluency & Coherence</span>
+                </div>
+                <div class="score-card">
+                    <span class="score-value">${scores.lexical_resource}</span>
+                    <span class="score-label">Lexical Resource</span>
+                </div>
+                <div class="score-card">
+                    <span class="score-value">${scores.grammatical_range}</span>
+                    <span class="score-label">Grammatical Range</span>
+                </div>
+                <div class="score-card">
+                    <span class="score-value">${scores.pronunciation}</span>
+                    <span class="score-label">Pronunciation</span>
+                </div>
+                <div class="score-card" style="grid-column: span 2;">
+                    <span class="score-value" style="color: #28a745;">${scores.overall_band}</span>
+                    <span class="score-label">Overall Band Score</span>
+                </div>
+            `;
+            
+            const feedbackSection = document.getElementById('speakingFeedback');
+            feedbackSection.innerHTML = `
+                <div class="feedback-category">
+                    <h4 class="feedback-title">💪 Strengths</h4>
+                    <ul class="feedback-list">
+                        ${scores.feedback.strengths.map(item => `<li>${item}</li>`).join('')}
+                    </ul>
+                </div>
+                <div class="feedback-category">
+                    <h4 class="feedback-title">🎯 Areas for Improvement</h4>
+                    <ul class="feedback-list improvements">
+                        ${scores.feedback.improvements.map(item => `<li>${item}</li>`).join('')}
+                    </ul>
+                </div>
+                <div class="feedback-category">
+                    <h4 class="feedback-title">💡 Suggestions</h4>
+                    <ul class="feedback-list suggestions">
+                        ${scores.feedback.suggestions.map(item => `<li>${item}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        // Curriculum Functions
+        function loadCurriculumData() {
+            const curriculumGrid = document.getElementById('curriculumGrid');
+            const bands = ['4.0', '4.5', '5.0', '5.5', '6.0', '6.5', '7.0'];
+            
+            curriculumGrid.innerHTML = bands.map(band => {
+                const isUnlocked = unlockedBands.includes(band);
+                const isNext = !isUnlocked && unlockedBands.includes(getPreviousBand(band));
+                
+                return `
+                    <div class="band-card ${isUnlocked ? 'unlocked' : 'locked'}" onclick="${isNext ? `unlockBand('${band}')` : ''}">
+                        <div class="band-level">Band ${band}</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <span style="font-weight: 600;">IELTS Level</span>
+                            <span class="status-badge ${isUnlocked ? 'status-completed' : 'status-pending'}">
+                                ${isUnlocked ? '✓ Unlocked' : '🔒 Locked'}
+                            </span>
+                        </div>
+                        
+                        <div class="band-requirements">
+                            <div class="requirement-item">
+                                <div class="requirement-label">Writing Requirements:</div>
+                                <div class="requirement-value">${curriculumData[band]?.writing || 'Requirements coming soon'}</div>
+                            </div>
+                            <div class="requirement-item">
+                                <div class="requirement-label">Speaking Requirements:</div>
+                                <div class="requirement-value">${curriculumData[band]?.speaking || 'Requirements coming soon'}</div>
+                            </div>
+                        </div>
+                        
+                        ${isNext ? '<button class="unlock-btn" onclick="event.stopPropagation(); unlockBand(\'' + band + '\')">🚀 Unlock Band ' + band + '</button>' : ''}
+                        ${isUnlocked ? '<p style="margin-top: 1rem; color: #28a745; font-weight: 600;">✅ You can now practice at this level!</p>' : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getPreviousBand(band) {
+            const bands = ['4.0', '4.5', '5.0', '5.5', '6.0', '6.5', '7.0'];
+            const index = bands.indexOf(band);
+            return index > 0 ? bands[index - 1] : null;
+        }
+
+        function unlockBand(band) {
+            // Simulate unlock process
+            const card = event.target.closest('.band-card');
+            const button = card.querySelector('.unlock-btn');
+            
+            if (button) {
+                button.innerHTML = '<span class="loading"></span> Unlocking...';
+                button.disabled = true;
+            }
+            
+            setTimeout(() => {
+                unlockedBands.push(band);
+                showBandRequirements(band);
+                loadCurriculumData(); // Refresh the grid
+            }, 2000);
+        }
+
+        function showBandRequirements(band) {
+            alert(`🎉 Congratulations! Band ${band} is now unlocked!\n\n` +
+                  `📝 Writing: ${curriculumData[band].writing}\n\n` +
+                  `🎤 Speaking: ${curriculumData[band].speaking}\n\n` +
+                  `Start practicing to master this level!`);
+        }
+
+        function showRecommendations() {
+            showSection('recommendations');
+            
+            // Update navigation
+            const navItems = document.querySelectorAll('.nav-item');
+            navItems.forEach(item => item.classList.remove('active'));
+            document.querySelector('.nav-item:nth-child(5)').classList.add('active');
+        }
+
+        // Initialize word count on page load
+        setTimeout(() => {
+            updateWordCount();
+        }, 100);
+    </script>
+</body>
+</html>stat-value">3</span>
+                                    <span class="stat-label">Essays</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-value">6.0</span>
+                                    <span class="stat-label">Avg Score</span>
+                                </div>
+                            </div>
+                            <button class="btn" onclick="showSection('writing')">Start Writing</button>
+                        </div>
+
+                        <div class="card">
+                            <span class="card-icon">🎤</span>
+                            <h3 class="card-title">Speaking Practice</h3>
+                            <p class="card-description">Record your speaking responses and receive detailed pronunciation feedback.</p>
+                            <div class="card-stats">
+                                <div class="stat">
+                                    <span class="stat-value">2</span>
+                                    <span class="stat-label">Recordings</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-value">5.5</span>
+                                    <span class="stat-label">Latest Score</span>
+                                </div>
+                            </div>
+                            <button class="btn" onclick="showSection('speaking')">Start Speaking</button>
+                        </div>
+
+                        <div class="card">
+                            <span class="card-icon">📚</span>
+                            <h3 class="card-title">Curriculum</h3>
+                            <p class="card-description">Follow structured lessons to achieve your target IELTS band score.</p>
+                            <div class="card-stats">
+                                <div class="stat">
+                                    <span class="stat-value">5.5</span>
+                                    <span class="stat-label">Current Band</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-value">6.5</span>
+                                    <span class="stat-label">Target Band</span>
+                                </div>
+                            </div>
+                            <button class="btn" onclick="showSection('curriculum')">View Curriculum</button>
+                        </div>
+                    </div>
+
+                    <div class="analysis-results">
+                        <h3>Recent Analysis</h3>
+                        <p>🎯 Complete a writing or speaking task to see your detailed analysis here!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Writing Section -->
+            <div id="writingSection" class="content-section hidden">
+                <div class="content-header">
+                    <h1 class="content-title">Writing Practice</h1>
+                    <p class="content-subtitle">Submit essays for AI analysis and feedback</p>
+                </div>
+                <div class="content-body">
+                    <form id="essayForm" onsubmit="submitEssay(event)">
+                        <div class="form-group">
+                            <label class="form-label">Essay Title</label>
+                            <input type="text" class="form-input" id="essayTitle" placeholder="Enter your essay title" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Task Type</label>
+                            <select class="form-input" id="taskType">
+                                <option value="task1">Task 1 (150+ words)</option>
+                                <option value="task2">Task 2 (250+ words)</option>
+                                <option value="general">General Writing</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Essay Content</label>
+                            <textarea class="form-textarea" id="essayContent" placeholder="Write your essay here..." required style="min-height: 300px;" oninput="updateWordCount()"></textarea>
+                            <small>Word count: <span id="wordCount">0</span></small>
+                        </div>
+                        <button type="submit" class="btn">
+                            <span id="submitBtnText">Submit Essay</span>
+                            <span id="submitLoading" class="loading hidden"></span>
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="showRecommendations()" style="margin-left: 1rem;">
+                            Get Recommendations
+                        </button>
+                    </form>
+
+                    <div id="writingResults" class="analysis-results hidden">
+                        <h3>Essay Analysis Results</h3>
+                        <div id="writingScores" class="scores-grid"></div>
+                        <div id="writingFeedback" class="feedback-section"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Speaking Section -->
+            <div id="speakingSection" class="content-section hidden">
+                <div class="content-header">
+                    <h1 class="content-title">Speaking Practice</h1>
+                    <p class="content-subtitle">Record your responses and get pronunciation feedback</p>
+                </div>
+                <div class="content-body">
+                    <div class="form-group">
+                        <label class="form-label">Speaking Task Type</label>
+                        <select class="form-input" id="speakingTaskType">
+                            <option value="part1">Part 1 - Personal Questions</option>
+                            <option value="part2">Part 2 - Long Turn</option>
+                            <option value="part3">Part 3 - Discussion</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Question/Topic</label>
+                        <input type="text" class="form-input" id="speakingQuestion" placeholder="Enter the speaking question or topic" value="Describe your hometown">
+                    </div>
+
+                    <div class="voice-recorder" id="voiceRecorder">
+                        <h3>🎤 Voice Recorder</h3>
+                        <p id="recorderStatus">Click to start recording</p>
+                        <button class="record-btn" id="recordBtn" onclick="toggleRecording()">
+                            <span id="recordBtnText">Start Recording</span>
+                        </button>
+                        <div class="waveform" id="waveform">
+                            <span id="waveformText">Audio waveform will appear here</span>
+                        </div>
+                        <div class="timer" id="recordingTimer">00:00</div>
+                        <audio id="audioPlayback" controls class="hidden" style="width: 100%; margin-top: 1rem;"></audio>
+                    </div>
+
+                    <button class="btn" id="analyzeSpeakingBtn" onclick="analyzeSpeaking()" disabled>
+                        <span id="analyzeBtnText">Analyze Speaking</span>
+                        <span id="analyzeLoading" class="loading hidden"></span>
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="showRecommendations()" style="margin-left: 1rem;">
+                        Get Recommendations
+                    </button>
+
+                    <div id="speakingResults" class="analysis-results hidden">
+                        <h3>Speaking Analysis Results</h3>
+                        <div id="speakingScores" class="scores-grid"></div>
+                        <div id="speakingFeedback" class="feedback-section"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Curriculum Section -->
+            <div id="curriculumSection" class="content-section hidden">
+                <div class="content-header">
+                    <h1 class="content-title">IELTS Curriculum</h1>
+                    <p class="content-subtitle">Structured learning path to achieve your target band</p>
+                </div>
+                <div class="content-body">
+                    <div class="curriculum-grid" id="curriculumGrid">
+                        <!-- Band cards will be dynamically generated -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recommendations Section -->
+            <div id="recommendationsSection" class="content-section hidden">
+                <div class="content-header">
+                    <h1 class="content-title">AI Recommendations</h1>
+                    <p class="content-subtitle">Personalized learning recommendations based on your performance</p>
+                </div>
+                <div class="content-body">
+                    <div id="recommendationsContent">
+                        <div class="analysis-results">
+                            <h3>📊 Your Learning Analysis</h3>
+                            <div class="feedback-section">
+                                <div class="feedback-category">
+                                    <h4 class="feedback-title">🎯 Current Assessment</h4>
+                                    <p>Based on your recent activities, your current estimated band is <strong>5.5 - 6.0</strong></p>
+                                </div>
+
+                                <div class="feedback-category">
+                                    <h4 class="feedback-title">💪 Strengths</h4>
+                                    <ul class="feedback-list">
+                                        <li>Good basic grammar understanding</li>
+                                        <li>Adequate vocabulary for everyday topics</li>
+                                        <li>Clear pronunciation in most words</li>
+                                        <li>Willing to practice regularly</li>
+                                    </ul>
+                                </div>
+
+                                <div class="feedback-category">
+                                    <h4 class="feedback-title">🎯 Areas for Improvement</h4>
+                                    <ul class="feedback-list improvements">
+                                        <li>Expand academic vocabulary range</li>
+                                        <li>Use more complex sentence structures</li>
+                                        <li>Improve fluency and reduce hesitations</li>
+                                        <li>Better essay organization and cohesion</li>
+                                    </ul>
+                                </div>
+
+                                <div class="feedback-category">
+                                    <h4 class="feedback-title">💡 Specific Recommendations</h4>
+                                    <ul class="feedback-list suggestions">
+                                        <li>Practice writing 250+ word essays daily</li>
+                                        <li>Record yourself speaking for 2-3 minutes daily</li>
+                                        <li>Learn 10 new academic words each week</li>
+                                        <li>Use linking words: however, furthermore, consequently</li>
+                                        <li>Practice complex sentences with subordinate clauses</li>
+                                    </ul>
+                                </div>
+
+                                <div class="feedback-category">
+                                    <h4 class="feedback-title">📅 Study Plan</h4>
+                                    <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-top: 1rem;">
+                                        <p><strong>Week 1-2:</strong> Focus on vocabulary expansion and basic essay structure</p>
+                                        <p><strong>Week 3-4:</strong> Practice complex grammar and speaking fluency</p>
+                                        <p><strong>Week 5-6:</strong> Full essay and speaking practice with timing</p>
+                                        <p><strong>Week 7-8:</strong> Review weak areas and mock tests</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Progress Section -->
+            <div id="progressSection" class="content-section hidden">
+                <div class="content-header">
+                    <h1 class="content-title">My Progress</h1>
+                    <p class="content-subtitle">Track your learning journey and achievements</p>
+                </div>
+                <div class="content-body">
+                    <div class="dashboard-grid">
+                        <div class="card">
+                            <span class="card-icon">📊</span>
+                            <h3 class="card-title">Overall Progress</h3>
+                            <div class="card-stats">
+                                <div class="stat">
+                                    <span class="
