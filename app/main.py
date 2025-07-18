@@ -1,462 +1,542 @@
-import os
-import sys
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+from datetime import timedelta, datetime
+import logging
+import asyncio
+import time
+from sqlalchemy import select
 
-# Add the app directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from config.settings import settings
+from app.database import init_db, get_db
+from app.api.auth.auth import AuthService, UserCreate, UserLogin, Token, get_current_active_user
+from app.models.models import User, UserRole
+from app.utils.logging import setup_logging, MonitoringMiddleware
 
-print("🚀 Starting GetEdu Backend...")
-print(f"Python version: {sys.version}")
-print(f"Working directory: {os.getcwd()}")
+# Import all routers
+from app.api.routes.essays import router as essays_router
+from app.api.routes.ai_grading import router as ai_grading_router
+from app.api.routes.speaking import router as speaking_router
+from app.api.routes.dashboard import router as dashboard_router
+from app.api.routes.admin import router as admin_router
+from app.api.routes.tasks import router as tasks_router
+from app.api.routes.scheduling import router as scheduling_router
+from app.api.routes.curriculum import router as curriculum_router
 
-# Simple in-memory storage for demo
-users_db = {}
-essays_db = {}
+# Setup logging
+setup_logging()
+logger = logging.getLogger(__name__)
 
-# Lifespan events
+# Lifespan events for startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("✅ GetEdu Backend started successfully!")
+    """Application lifespan manager"""
+    logger.info(f"🚀 Starting {settings.app_name} v{settings.version}")
+    
+    try:
+        # Initialize database
+        await init_db()
+        logger.info("✅ Database initialized successfully")
+        
+        # Initialize AI services
+        from app.services.enhanced_ai_service import ai_service_manager
+        logger.info("✅ AI services initialized")
+        
+        # Setup background tasks if Celery is available
+        try:
+            from workers.celery_app import celery_app
+            logger.info("✅ Celery worker connection established")
+        except ImportError:
+            logger.warning("⚠️ Celery not available - background tasks disabled")
+        
+        logger.info("🎉 Application startup complete")
+        
+    except Exception as e:
+        logger.error(f"❌ Startup failed: {str(e)}")
+        raise
+    
     yield
-    print("👋 Shutting down GetEdu Backend")
+    
+    logger.info("👋 Shutting down gracefully...")
 
-# Create FastAPI app
+# Create FastAPI application
 app = FastAPI(
-    title="GetEdu - AI Language Learning Backend",
-    version="1.0.0",
-    description="AI-powered language learning platform with comprehensive evaluation",
-    lifespan=lifespan
+    title=settings.app_name,
+    version=settings.version,
+    description="""
+    🎓 **AI-Powered Language Learning Backend**
+    
+    A comprehensive backend system for multi-language instruction with IELTS-style evaluation,
+    personalized curriculum generation, and intelligent scheduling.
+    
+    ## Features
+    
+    ### 🧠 AI-Powered Assessment
+    - **Essay Grading**: Automated IELTS-style scoring with detailed feedback
+    - **Speaking Analysis**: Audio transcription and pronunciation assessment
+    - **Fallback AI**: Open-source models when primary AI is unavailable
+    
+    ### 📚 Curriculum Management
+    - **Personalized Learning**: AI-generated curriculums based on student performance
+    - **Progress Tracking**: Real-time monitoring of learning progress
+    - **Adaptive Content**: Dynamic difficulty adjustment based on performance
+    
+    ### 📅 Smart Scheduling
+    - **Class Management**: Schedule, reschedule, and cancel classes
+    - **Teacher Availability**: Flexible availability management
+    - **Room Booking**: Virtual and physical classroom management
+    
+    ### 👨‍💼 Role-Based Access
+    - **Students**: Submit assignments, track progress, schedule classes
+    - **Teachers**: Manage classes, review student progress, set availability
+    - **Admins**: Platform analytics, user management, system monitoring
+    
+    ### 🌍 Multi-Language Support
+    - English, French, and Spanish instruction
+    - Language-specific assessment criteria
+    - Culturally appropriate content
+    
+    ## API Usage
+    
+    1. **Register/Login** to get access token
+    2. **Submit content** for AI analysis
+    3. **Track progress** through personalized dashboard
+    4. **Schedule classes** with available teachers
+    5. **Generate curriculum** based on learning goals
+    
+    ## Rate Limits & Costs
+    
+    - **Free Tier**: Rule-based analysis, unlimited usage
+    - **AI Tier**: OpenAI-powered analysis, token-based pricing
+    - **Automatic Fallback**: Seamless switching between AI services
+    """,
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
 
-# CORS middleware
+# Security middleware
+app.add_middleware(
+    TrustedHostMiddleware, 
+    allowed_hosts=["*"] if settings.debug else ["yourdomain.com", "api.yourdomain.com"]
+)
+
+# CORS middleware - configure for production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"] if settings.debug else [
+        "https://yourdomain.com",
+        "https://app.yourdomain.com",
+        "http://localhost:3000",  # Development frontend
+        "http://localhost:5173"   # Vite development server
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID", "X-Response-Time"]
 )
 
-# --- BASIC ROUTES ---
-@app.get("/")
+# Monitoring middleware
+app.add_middleware(MonitoringMiddleware)
+
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler for unhandled errors"""
+    logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
+    
+    if settings.debug:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Internal server error",
+                "detail": str(exc),
+                "type": type(exc).__name__
+            }
+        )
+    else:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Internal server error",
+                "message": "An unexpected error occurred. Please try again later."
+            }
+        )
+
+# Health check endpoint
+@app.get("/health", tags=["System"])
+async def health_check():
+    """Comprehensive health check"""
+    start_time = time.time()
+    
+    health_status = {
+        "status": "healthy",
+        "timestamp": time.time(),
+        "version": settings.version,
+        "environment": "development" if settings.debug else "production",
+        "services": {}
+    }
+    
+    # Check database
+    try:
+        from app.database import async_engine
+        async with async_engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))
+        health_status["services"]["database"] = "healthy"
+    except Exception as e:
+        health_status["services"]["database"] = f"unhealthy: {str(e)}"
+        health_status["status"] = "degraded"
+    
+    # Check AI services
+    try:
+        from app.services.enhanced_ai_service import ai_service_manager
+        health_status["services"]["ai_primary"] = "available" if ai_service_manager.primary_service else "unavailable"
+        health_status["services"]["ai_fallback"] = "available" if ai_service_manager.fallback_service else "unavailable"
+    except Exception as e:
+        health_status["services"]["ai_services"] = f"error: {str(e)}"
+    
+    # Check Celery (optional)
+    try:
+        from workers.celery_app import celery_app
+        inspect = celery_app.control.inspect()
+        stats = inspect.stats()
+        health_status["services"]["celery"] = "healthy" if stats else "unhealthy"
+    except Exception:
+        health_status["services"]["celery"] = "unavailable"
+    
+    health_status["response_time_ms"] = round((time.time() - start_time) * 1000, 2)
+    
+    return health_status
+
+# Root endpoint
+@app.get("/", tags=["System"])
 async def root():
+    """API root endpoint with feature overview"""
     return {
-        "message": "Welcome to GetEdu - AI Language Learning Backend",
-        "version": "1.0.0",
+        "message": f"Welcome to {settings.app_name}",
+        "version": settings.version,
         "status": "running",
-        "features": [
-            "✅ User Authentication",
-            "✅ Essay Evaluation", 
-            "✅ Speaking Analysis",
-            "✅ AI Feedback",
-            "✅ Progress Tracking"
-        ],
-        "ai_service": "Enhanced Free AI Service",
-        "cost": "100% Free",
-        "database": "In-Memory (Demo Mode)",
-        "endpoints": {
-            "auth": "/api/auth/",
-            "essays": "/api/essays/", 
-            "ai_evaluation": "/api/ai/",
-            "docs": "/docs"
-        }
+        "features": {
+            "authentication": "JWT-based with role management",
+            "ai_grading": "Essay and speaking analysis",
+            "scheduling": "Class and resource management", 
+            "curriculum": "AI-generated personalized learning",
+            "multi_language": "English, French, Spanish support",
+            "admin_panel": "Analytics and user management"
+        },
+        "api_docs": "/docs",
+        "admin_panel": "/docs#/Admin%20Dashboard",
+        "health_check": "/health",
+        "ai_enabled": bool(settings.openai_api_key and settings.openai_api_key.startswith("sk-")),
+        "fallback_ai": "Available (rule-based analysis)"
     }
 
-@app.get("/health")
-async def health_check():
-    return {
-        "status": "healthy",
-        "database": "connected",
-        "ai_service": "available",
-        "version": "1.0.0",
-        "timestamp": "2025-07-18T16:30:00Z"
-    }
+# Include all routers
+app.include_router(essays_router)
+app.include_router(ai_grading_router)
+app.include_router(speaking_router)
+app.include_router(dashboard_router)
+app.include_router(admin_router)
+app.include_router(tasks_router)
+app.include_router(scheduling_router)
+app.include_router(curriculum_router)
 
 # --- AUTHENTICATION ROUTES ---
-@app.post("/api/auth/register")
-async def register(user_data: dict):
-    """Register a new user"""
-    email = user_data.get("email")
-    username = user_data.get("username")
-    password = user_data.get("password")
-    full_name = user_data.get("full_name")
-    
-    if not all([email, username, password, full_name]):
-        raise HTTPException(status_code=400, detail="All fields are required")
-    
-    if email in users_db:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # Store user (in production, hash the password)
-    users_db[email] = {
-        "email": email,
-        "username": username,
-        "full_name": full_name,
-        "password": password,  # In production, this should be hashed
-        "user_id": len(users_db) + 1
-    }
-    
-    return {
-        "message": "User created successfully",
-        "user_id": users_db[email]["user_id"],
-        "email": email,
-        "username": username
-    }
 
-@app.post("/api/auth/login")
-async def login(login_data: dict):
-    """Login user and return token"""
-    email = login_data.get("email")
-    password = login_data.get("password")
+@app.post("/api/auth/register", response_model=dict, tags=["Authentication"])
+async def register(user_data: UserCreate, db = Depends(get_db)):
+    """
+    Register a new user account
     
-    if not email or not password:
-        raise HTTPException(status_code=400, detail="Email and password are required")
+    Creates a new user with the specified role (student by default).
+    Teachers and admins must be created by existing admins.
+    """
+    # Check if user already exists
+    existing_user = await AuthService.get_user_by_email(db, user_data.email)
+    if existing_user:
+        raise HTTPException(
+            status_code=400, 
+            detail="Email already registered. Please use a different email or try logging in."
+        )
     
-    user = users_db.get(email)
-    if not user or user["password"] != password:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    # Check username availability
+    username_check = await db.execute(
+        select(User).where(User.username == user_data.username)
+    )
+    if username_check.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail="Username already taken. Please choose a different username."
+        )
     
-    # In production, return a proper JWT token
-    token = f"demo_token_{user['user_id']}"
+    try:
+        new_user = await AuthService.create_user(db, user_data)
+        
+        # Create student profile if user is a student
+        if new_user.role == UserRole.STUDENT:
+            from app.models.models import StudentProfile
+            student_profile = StudentProfile(user_id=new_user.id)
+            db.add(student_profile)
+            await db.commit()
+        
+        logger.info(f"New user registered: {new_user.email} ({new_user.role.value})")
+        
+        return {
+            "message": "User created successfully",
+            "user_id": new_user.id,
+            "email": new_user.email,
+            "username": new_user.username,
+            "role": new_user.role.value,
+            "next_steps": [
+                "Log in with your credentials",
+                "Complete your profile",
+                "Start your learning journey!"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"User registration failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Registration failed. Please try again."
+        )
+
+@app.post("/api/auth/login", response_model=Token, tags=["Authentication"])
+async def login(login_data: UserLogin, db = Depends(get_db)):
+    """
+    User login with email and password
+    
+    Returns JWT access token for API authentication.
+    Include token in Authorization header: `Bearer <token>`
+    """
+    user = await AuthService.authenticate_user(db, login_data.email, login_data.password)
+    if not user:
+        logger.warning(f"Failed login attempt for email: {login_data.email}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password. Please check your credentials and try again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account is deactivated. Please contact support.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Update last login
+    user.last_login = datetime.utcnow()
+    await db.commit()
+    
+    # Create access token
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = AuthService.create_access_token(
+        data={"sub": user.email}, expires_delta=access_token_expires
+    )
+    
+    logger.info(f"User logged in: {user.email} ({user.role.value})")
     
     return {
-        "access_token": token,
+        "access_token": access_token,
         "token_type": "bearer",
+        "expires_in": settings.access_token_expire_minutes * 60,
         "user": {
-            "id": user["user_id"],
-            "email": user["email"],
-            "username": user["username"],
-            "full_name": user["full_name"]
+            "id": user.id,
+            "email": user.email,
+            "username": user.username,
+            "full_name": user.full_name,
+            "role": user.role.value
         }
     }
 
-@app.get("/api/auth/me")
-async def get_me():
-    """Get current user info"""
-    # In production, extract user from JWT token
+@app.get("/api/auth/me", tags=["Authentication"])
+async def get_current_user_info(current_user: User = Depends(get_current_active_user)):
+    """
+    Get current authenticated user information
+    
+    Returns detailed user profile including role-specific data.
+    """
+    user_info = {
+        "id": current_user.id,
+        "email": current_user.email,
+        "username": current_user.username,
+        "full_name": current_user.full_name,
+        "role": current_user.role.value,
+        "preferred_language": current_user.preferred_language.value,
+        "timezone": current_user.timezone,
+        "is_active": current_user.is_active,
+        "created_at": current_user.created_at.isoformat(),
+        "last_login": current_user.last_login.isoformat() if current_user.last_login else None
+    }
+    
+    # Add role-specific information
+    if current_user.role == UserRole.STUDENT:
+        user_info.update({
+            "ielts_target_band": current_user.ielts_target_band,
+            "current_level": current_user.current_level
+        })
+    elif current_user.role == UserRole.TEACHER:
+        user_info.update({
+            "specializations": current_user.specializations or [],
+            "hourly_rate": current_user.hourly_rate
+        })
+    
+    return user_info
+
+@app.post("/api/auth/refresh", tags=["Authentication"])
+async def refresh_token(current_user: User = Depends(get_current_active_user)):
+    """
+    Refresh access token
+    
+    Generate a new access token for the current user.
+    """
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = AuthService.create_access_token(
+        data={"sub": current_user.email}, expires_delta=access_token_expires
+    )
+    
     return {
-        "id": 1,
-        "email": "demo@example.com",
-        "username": "demo_user",
-        "full_name": "Demo User",
-        "user_type": "student"
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in": settings.access_token_expire_minutes * 60
     }
 
-# --- ESSAY ROUTES ---
-@app.post("/api/essays/submit")
-async def submit_essay(essay_data: dict):
-    """Submit an essay"""
-    title = essay_data.get("title")
-    content = essay_data.get("content")
-    task_type = essay_data.get("task_type", "general")
-    
-    if not title or not content:
-        raise HTTPException(status_code=400, detail="Title and content are required")
-    
-    essay_id = len(essays_db) + 1
-    word_count = len(content.split())
-    
-    essays_db[essay_id] = {
-        "id": essay_id,
-        "title": title,
-        "content": content,
-        "task_type": task_type,
-        "word_count": word_count,
-        "submitted_at": "2025-07-18T16:30:00Z",
-        "is_graded": False
-    }
-    
-    return {
-        "message": "Essay submitted successfully",
-        "essay_id": essay_id,
-        "word_count": word_count,
-        "status": "submitted"
-    }
+# --- DEMO & TESTING ROUTES ---
 
-@app.get("/api/essays/my-essays")
-async def get_my_essays():
-    """Get user's essays"""
+@app.get("/api/demo/protected", tags=["Demo"])
+async def protected_demo(current_user: User = Depends(get_current_active_user)):
+    """Demo endpoint showing authentication in action"""
     return {
-        "essays": [
-            {
-                "id": essay["id"],
-                "title": essay["title"],
-                "task_type": essay["task_type"],
-                "word_count": essay["word_count"],
-                "is_graded": essay["is_graded"],
-                "submitted_at": essay["submitted_at"]
-            }
-            for essay in essays_db.values()
-        ]
-    }
-
-# --- AI EVALUATION ROUTES ---
-@app.post("/api/ai/evaluate-essay")
-async def evaluate_essay(request: dict):
-    """Evaluate an essay with AI"""
-    essay_id = request.get("essay_id")
-    
-    if not essay_id or essay_id not in essays_db:
-        raise HTTPException(status_code=404, detail="Essay not found")
-    
-    essay = essays_db[essay_id]
-    
-    # Simple rule-based evaluation
-    word_count = essay["word_count"]
-    content = essay["content"]
-    
-    # Calculate basic scores
-    task_score = 6.0 if word_count > 150 else 5.5
-    coherence_score = 6.5 if len(content.split('.')) > 3 else 6.0
-    lexical_score = 6.0 if len(set(content.lower().split())) / len(content.split()) > 0.5 else 5.5
-    grammar_score = 6.0
-    overall_band = round((task_score + coherence_score + lexical_score + grammar_score) / 4, 1)
-    
-    # Mark as graded
-    essay["is_graded"] = True
-    
-    return {
-        "message": "Essay evaluated successfully",
-        "essay_id": essay_id,
-        "overall_band": overall_band,
-        "cost": 0.0,
-        "scores": {
-            "task_achievement": task_score,
-            "coherence_cohesion": coherence_score,
-            "lexical_resource": lexical_score,
-            "grammar_accuracy": grammar_score,
-            "overall_band": overall_band
-        },
-        "evaluation": {
-            "strengths": [
-                "Clear attempt at addressing the task",
-                "Reasonable essay structure",
-                "Good word count for the task type"
-            ],
-            "weaknesses": [
-                "Could develop ideas more fully",
-                "More varied vocabulary would improve the score",
-                "Consider using more complex sentence structures"
-            ],
-            "focus_areas": ["lexical_resource", "grammar_accuracy"]
-        },
-        "improvement_course": {
-            "title": "Personalized 4-Week Improvement Plan",
-            "current_level": overall_band,
-            "target_level": overall_band + 0.5,
-            "estimated_duration": "4 weeks",
-            "primary_focus": "Vocabulary and Grammar",
-            "weekly_plan": [
-                {
-                    "week": 1,
-                    "focus": "Vocabulary Building",
-                    "activities": ["Learn 10 new academic words daily", "Practice using synonyms"]
-                },
-                {
-                    "week": 2,
-                    "focus": "Grammar Structures",
-                    "activities": ["Practice complex sentences", "Use conditional structures"]
-                },
-                {
-                    "week": 3,
-                    "focus": "Essay Organization",
-                    "activities": ["Practice paragraph development", "Use linking words"]
-                },
-                {
-                    "week": 4,
-                    "focus": "Practice and Review",
-                    "activities": ["Write practice essays", "Review and improve"]
-                }
-            ],
-            "daily_activities": [
-                "Read academic articles (15 mins)",
-                "Practice writing paragraphs (20 mins)",
-                "Learn new vocabulary (10 mins)"
-            ]
+        "message": f"Hello {current_user.full_name}! 🎉",
+        "user_role": current_user.role.value,
+        "access_level": "authenticated",
+        "features_available": {
+            "essay_submission": True,
+            "speaking_analysis": True,
+            "progress_tracking": True,
+            "class_scheduling": current_user.role in [UserRole.STUDENT, UserRole.TEACHER],
+            "admin_panel": current_user.role == UserRole.ADMIN,
+            "curriculum_generation": current_user.role == UserRole.STUDENT
         }
     }
 
-@app.post("/api/ai/quick-evaluate")
-async def quick_evaluate(request: dict):
-    """Quick essay evaluation"""
-    content = request.get("content")
-    work_type = request.get("work_type", "essay")
-    
-    if not content:
-        raise HTTPException(status_code=400, detail="Content is required")
-    
-    # Simple evaluation
-    word_count = len(content.split())
-    sentences = len(content.split('.'))
-    
-    # Calculate scores
-    overall_score = 6.0 if word_count > 100 else 5.5
-    
+@app.get("/api/demo/public", tags=["Demo"])
+async def public_demo():
+    """Public demo endpoint (no authentication required)"""
     return {
-        "message": "Quick evaluation completed",
-        "overall_band": overall_score,
-        "cost": 0.0,
-        "scores": {
-            "overall_band": overall_score,
-            "word_count": word_count,
-            "sentences": sentences
-        },
-        "evaluation": {
-            "strengths": ["Good attempt at the task"],
-            "weaknesses": ["Could be more detailed"],
-            "focus_areas": ["development", "vocabulary"]
-        },
-        "improvement_course": {
-            "title": "Quick Improvement Tips",
-            "suggestions": [
-                "Write longer responses",
-                "Use more varied vocabulary",
-                "Practice daily writing"
-            ]
-        }
-    }
-
-@app.post("/api/ai/evaluate-speaking")
-async def evaluate_speaking(request: dict):
-    """Evaluate speaking performance"""
-    transcription = request.get("transcription")
-    speaking_duration = request.get("speaking_duration", 30)
-    
-    if not transcription:
-        raise HTTPException(status_code=400, detail="Transcription is required")
-    
-    # Simple speaking evaluation
-    word_count = len(transcription.split())
-    words_per_minute = (word_count / speaking_duration) * 60 if speaking_duration > 0 else 0
-    
-    # Calculate scores
-    fluency_score = 6.0 if words_per_minute > 120 else 5.5
-    lexical_score = 6.0 if len(set(transcription.lower().split())) / len(transcription.split()) > 0.5 else 5.5
-    grammar_score = 6.0
-    pronunciation_score = 6.0  # Demo score
-    overall_band = round((fluency_score + lexical_score + grammar_score + pronunciation_score) / 4, 1)
-    
-    return {
-        "message": "Speaking evaluation completed",
-        "overall_band": overall_band,
-        "cost": 0.0,
-        "scores": {
-            "fluency_coherence": fluency_score,
-            "lexical_resource": lexical_score,
-            "grammatical_range": grammar_score,
-            "pronunciation": pronunciation_score,
-            "overall_band": overall_band
-        },
-        "evaluation": {
-            "strengths": ["Clear speech attempt", "Good speaking duration"],
-            "weaknesses": ["Could speak more fluently", "More vocabulary variety needed"],
-            "speaking_metrics": {
-                "words_per_minute": round(words_per_minute, 1),
-                "speaking_time": speaking_duration,
-                "word_count": word_count
-            }
-        },
-        "improvement_course": {
-            "title": "Speaking Improvement Plan",
-            "focus": "Fluency and Vocabulary",
-            "daily_practice": [
-                "Speak for 5 minutes daily",
-                "Record yourself speaking",
-                "Practice with new vocabulary"
-            ]
-        }
-    }
-
-@app.get("/api/ai/my-progress")
-async def get_progress():
-    """Get user progress"""
-    return {
-        "progress": {
-            "total_essays": len(essays_db),
-            "current_level": 6.0,
-            "improvement_trend": "Improving",
-            "skill_breakdown": {
-                "task_achievement": {"current": 6.0, "trend": 0.5},
-                "coherence_cohesion": {"current": 6.5, "trend": 0.3},
-                "lexical_resource": {"current": 5.5, "trend": 0.2},
-                "grammar_accuracy": {"current": 6.0, "trend": 0.4}
-            }
-        },
-        "recommendations": {
-            "focus_area": "Vocabulary Development",
-            "next_goal": "Reach 6.5 overall band",
-            "estimated_time": "3-4 weeks with practice"
-        }
-    }
-
-# --- DEMO ROUTES ---
-@app.get("/api/demo/features")
-async def demo_features():
-    """Show platform features"""
-    return {
-        "platform_features": {
-            "writing_evaluation": {
-                "description": "Comprehensive essay analysis with detailed feedback",
-                "available": True
-            },
-            "speaking_analysis": {
-                "description": "AI-powered speaking evaluation",
-                "available": True
-            },
-            "progress_tracking": {
-                "description": "Monitor improvement over time",
-                "available": True
-            },
-            "improvement_courses": {
-                "description": "Personalized learning plans",
-                "available": True
-            }
-        },
-        "cost": "100% Free",
-        "ai_technology": "Enhanced Rule-Based Analysis"
-    }
-
-@app.get("/api/quick-start")
-async def quick_start():
-    """Quick start guide"""
-    return {
-        "welcome": "Welcome to GetEdu!",
-        "steps": [
-            "1. Register your account",
-            "2. Submit your first essay",
-            "3. Get AI evaluation and feedback",
-            "4. Follow your improvement plan",
-            "5. Track your progress"
+        "message": "This is a public endpoint - no authentication required! 🌍",
+        "available_features": [
+            "User registration",
+            "Health check",
+            "API documentation",
+            "Public information"
         ],
-        "sample_topics": [
-            "Environmental protection",
-            "Technology in education",
-            "Social media impact",
-            "Future of work"
-        ]
+        "next_steps": [
+            "Register an account at /api/auth/register",
+            "Login at /api/auth/login",
+            "Explore authenticated features"
+        ],
+        "sample_credentials": {
+            "note": "Register your own account or use demo credentials",
+            "demo_student": {
+                "email": "student@demo.com",
+                "password": "demopass123"
+            }
+        }
     }
 
-# --- SYSTEM INFO ---
-@app.get("/api/system/info")
+# System information endpoint
+@app.get("/api/system/info", tags=["System"])
 async def system_info():
-    return {
-        "application": {
-            "name": "GetEdu Backend",
-            "version": "1.0.0",
-            "mode": "Demo"
-        },
-        "features": {
-            "ai_service": "Enhanced Free AI Service",
-            "database": "In-Memory (Demo)",
-            "authentication": "Simple Token",
-            "cost": "100% Free"
-        },
-        "status": "Running successfully on Render"
+    """Get system information and capabilities"""
+    
+    ai_status = {
+        "primary_ai": "available" if settings.openai_api_key else "not_configured",
+        "fallback_ai": "available",
+        "supported_languages": ["english", "french", "spanish"],
+        "assessment_types": ["writing", "speaking", "reading", "listening"]
     }
+    
+    features = {
+        "authentication": "JWT with role-based access",
+        "ai_grading": "OpenAI GPT-4 + fallback models",
+        "scheduling": "Smart class and resource management",
+        "curriculum": "AI-generated personalized learning paths",
+        "analytics": "Comprehensive progress tracking",
+        "multi_language": "English, French, Spanish support",
+        "background_tasks": "Async processing with Celery",
+        "monitoring": "Request tracking and performance metrics"
+    }
+    
+    return {
+        "system_info": {
+            "app_name": settings.app_name,
+            "version": settings.version,
+            "environment": "development" if settings.debug else "production",
+            "database": "PostgreSQL" if "postgresql" in settings.database_url else "SQLite",
+            "ai_services": ai_status,
+            "features": features
+        },
+        "deployment_info": {
+            "optimized_for": "Render.com deployment",
+            "memory_efficient": True,
+            "auto_scaling": True,
+            "fallback_systems": True
+        },
+        "api_documentation": {
+            "swagger_ui": "/docs",
+            "redoc": "/redoc",
+            "openapi_spec": "/openapi.json"
+        }
+    }
+
+# Performance monitoring endpoint
+@app.get("/api/system/metrics", tags=["System"])
+async def system_metrics(current_user: User = Depends(get_current_active_user)):
+    """Get basic system metrics (admin only for detailed metrics)"""
+    
+    basic_metrics = {
+        "server_time": datetime.utcnow().isoformat(),
+        "uptime_check": "healthy",
+        "api_version": settings.version
+    }
+    
+    # Detailed metrics for admins
+    if current_user.role == UserRole.ADMIN:
+        try:
+            from app.database import async_engine
+            
+            # Database connection pool status
+            pool_status = {
+                "pool_size": async_engine.pool.size() if hasattr(async_engine.pool, 'size') else "unknown",
+                "checked_out": async_engine.pool.checkedout() if hasattr(async_engine.pool, 'checkedout') else "unknown"
+            }
+            
+            basic_metrics.update({
+                "database_pool": pool_status,
+                "memory_usage": "Available in production monitoring",
+                "active_connections": "Available in production monitoring"
+            })
+            
+        except Exception as e:
+            basic_metrics["monitoring_error"] = str(e)
+    
+    return basic_metrics
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    
+    # Development server configuration
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=settings.debug,
+        workers=1 if settings.debug else 4,
+        log_level="info" if settings.debug else "warning",
+        access_log=settings.debug
+    )
