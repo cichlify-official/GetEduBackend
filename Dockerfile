@@ -1,36 +1,36 @@
-# Production Dockerfile
-FROM python:3.11-slim as base
+FROM python:3.11-slim
 
 # Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONIOENCODING=utf-8 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Create non-root user
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid 1000 --create-home appuser
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
-    libpq-dev \
+    g++ \
     curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
-
-# Create app user for security
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy requirements and install Python dependencies
+COPY requirements-render.txt .
+RUN pip install --no-cache-dir -r requirements-render.txt
 
 # Copy application code
 COPY . .
 
-# Create necessary directories
-RUN mkdir -p /tmp/uploads && \
-    chown -R appuser:appuser /app /tmp/uploads
+# Create necessary directories and set permissions
+RUN mkdir -p uploads logs models && \
+    chown -R appuser:appuser /app
 
 # Switch to non-root user
 USER appuser
@@ -42,5 +42,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Production command
-CMD ["gunicorn", "app.main:app", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--access-logfile", "-", "--error-logfile", "-"]
+# Start command for Render
+CMD ["gunicorn", "app.main:app", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120", "--keep-alive", "5", "--access-logfile", "-", "--error-logfile", "-"]

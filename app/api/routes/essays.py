@@ -2,8 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
-from typing import List
-from datetime import datetime
+from typing import List, Optional
 
 from app.database import get_db
 from app.models.models import User, Essay, EssayGrading
@@ -16,6 +15,19 @@ class EssayCreate(BaseModel):
     content: str
     task_type: str = "general"
 
+class EssayResponse(BaseModel):
+    id: int
+    title: str
+    content: str
+    task_type: str
+    word_count: int
+    is_graded: bool
+    overall_score: Optional[float] = None
+    submitted_at: str
+
+    class Config:
+        from_attributes = True
+
 @router.post("/submit")
 async def submit_essay(
     essay_data: EssayCreate,
@@ -23,6 +35,13 @@ async def submit_essay(
     db: AsyncSession = Depends(get_db)
 ):
     """Submit an essay for grading"""
+    
+    if not essay_data.content.strip():
+        raise HTTPException(status_code=400, detail="Essay content cannot be empty")
+    
+    if not essay_data.title.strip():
+        raise HTTPException(status_code=400, detail="Essay title cannot be empty")
+    
     word_count = len(essay_data.content.split())
     
     new_essay = Essay(
@@ -41,7 +60,8 @@ async def submit_essay(
         "message": "Essay submitted successfully",
         "essay_id": new_essay.id,
         "word_count": word_count,
-        "status": "submitted"
+        "status": "submitted",
+        "next_step": f"Use /api/ai/grade-essay to grade essay {new_essay.id}"
     }
 
 @router.get("/my-essays")
@@ -67,7 +87,9 @@ async def get_my_essays(
                 "submitted_at": essay.submitted_at.isoformat()
             }
             for essay in essays
-        ]
+        ],
+        "total_essays": len(essays),
+        "graded_count": sum(1 for essay in essays if essay.is_graded)
     }
 
 @router.get("/{essay_id}")
@@ -100,8 +122,8 @@ async def get_essay_details(
                 "lexical_resource": grading.lexical_resource,
                 "grammar_accuracy": grading.grammar_accuracy,
                 "feedback": grading.feedback,
-                "lesson_recommendations": grading.lesson_recommendations,
-                "ai_model_used": grading.ai_model_used
+                "ai_model_used": grading.ai_model_used,
+                "created_at": grading.created_at.isoformat()
             }
     
     return {
@@ -111,7 +133,38 @@ async def get_essay_details(
             "content": essay.content,
             "task_type": essay.task_type,
             "word_count": essay.word_count,
-            "submitted_at": essay.submitted_at.isoformat()
+            "submitted_at": essay.submitted_at.isoformat(),
+            "is_graded": essay.is_graded,
+            "overall_score": essay.overall_score
         },
         "grading": grading_result
     }
+
+@router.delete("/{essay_id}")
+async def delete_essay(
+    essay_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete an essay"""
+    result = await db.execute(
+        select(Essay).where(Essay.id == essay_id, Essay.author_id == current_user.id)
+    )
+    essay = result.scalar_one_or_none()
+    
+    if not essay:
+        raise HTTPException(status_code=404, detail="Essay not found")
+    
+    # Delete associated grading first if exists
+    if essay.is_graded:
+        grading_result = await db.execute(
+            select(EssayGrading).where(EssayGrading.essay_id == essay_id)
+        )
+        grading = grading_result.scalar_one_or_none()
+        if grading:
+            await db.delete(grading)
+    
+    await db.delete(essay)
+    await db.commit()
+    
+    return {"message": f"Essay '{essay.title}' deleted successfully"}
