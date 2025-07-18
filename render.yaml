@@ -1,40 +1,25 @@
-# render.yaml - Render deployment configuration
+# render.yaml - Native Python deployment (alternative to Docker)
+# This file tells Render how to deploy your app without Docker
+
 services:
-  # Web Service
   - type: web
     name: language-ai-backend
     env: python
-    plan: starter  # or standard for production
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app.main:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120 --preload
+    startCommand: python -m gunicorn app.main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: ENVIRONMENT
-        value: production
       - key: DEBUG
         value: false
-      - key: DATABASE_URL
-        fromDatabase:
-          name: language-ai-db
-          property: connectionString
+      - key: APP_NAME
+        value: Language Learning AI Backend
       - key: SECRET_KEY
         generateValue: true
-      - key: OPENAI_API_KEY
-        sync: false  # Set manually in Render dashboard
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: language-ai-redis
-          property: connectionString
-    
-  # Redis Service
-  - type: redis
-    name: language-ai-redis
-    plan: starter
-    maxmemoryPolicy: allkeys-lru
+    scaling:
+      minInstances: 1
+      maxInstances: 3
 
-# Database
+# Optional: Add PostgreSQL database
 databases:
   - name: language-ai-db
-    plan: starter  # or standard for production
+    databaseName: language_ai
+    user: language_ai_user
