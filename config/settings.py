@@ -1,84 +1,68 @@
-# config/settings.py - Render deployment fix
 import os
 from pydantic_settings import BaseSettings
-from typing import Optional, List
-import secrets
+from typing import Optional
 
 class Settings(BaseSettings):
-    """Application settings optimized for Render deployment"""
+    """Application settings with proper defaults for deployment"""
     
     # Application
-    app_name: str = "Language Learning AI Backend"
-    version: str = "1.0.0"
+    app_name: str = "GetEdu - AI Language Learning"
     debug: bool = False
-    environment: str = "production"
+    version: str = "1.0.0"
     
-    # Server - Render automatically sets PORT
-    host: str = "0.0.0.0"
-    port: int = int(os.getenv("PORT", "8000"))
+    # Database - Use SQLite by default for simplicity
+    database_url: str = "sqlite:///./language_ai.db"
+    database_url_async: str = "sqlite+aiosqlite:///./language_ai.db"
     
-    # Database - Will be auto-filled by Render
-    database_url: str = os.getenv("DATABASE_URL", "sqlite:///./app.db")
-    database_url_async: str = ""
-    
-    # Security - Generate if not provided
-    secret_key: str = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
+    # Security
+    secret_key: str = "your-secret-key-change-in-production"
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 1440  # 24 hours
-
-    health_check_path: str = "/health"
-
-    # CORS
-    allowed_origins: List[str] = ["*"]  # Configure properly in production
-    allowed_methods: List[str] = ["*"]
-    allowed_headers: List[str] = ["*"]
+    access_token_expire_minutes: int = 30
     
-    # AI APIs
-    openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
+    # AI APIs (optional)
+    openai_api_key: Optional[str] = None
     
-    # Redis - Will be auto-filled by Render
-    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    
-    # File uploads - Use /tmp for serverless
-    upload_folder: str = "/tmp/uploads"
+    # File uploads
+    upload_folder: str = "uploads"
     max_file_size: int = 10 * 1024 * 1024  # 10MB
     
-    # Rate limiting
-    rate_limit_requests: int = 100
-    rate_limit_window: int = 60
-    
-    # Logging
-    log_level: str = "INFO"
-    
-    @property
-    def is_production(self) -> bool:
-        return self.environment.lower() == "production"
-    
-    @property
-    def database_url_sync(self) -> str:
-        """Convert async URL to sync for Alembic"""
-        return self.database_url.replace("+asyncpg", "").replace("+aiosqlite", "")
-    
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        
-        # Handle Render database URL conversion
-        if self.database_url and self.database_url.startswith("postgres://"):
-            # Convert postgres:// to postgresql:// for SQLAlchemy
-            self.database_url = self.database_url.replace("postgres://", "postgresql://", 1)
-        
-        # Set async URL if not already set
-        if not self.database_url_async:
-            if "postgresql://" in self.database_url:
-                self.database_url_async = self.database_url.replace("postgresql://", "postgresql+asyncpg://")
-            elif "sqlite://" in self.database_url:
-                self.database_url_async = self.database_url.replace("sqlite://", "sqlite+aiosqlite://")
-            else:
-                self.database_url_async = self.database_url
+    # Redis (optional)
+    redis_url: Optional[str] = None
     
     class Config:
         env_file = ".env"
-        case_sensitive = False
+        env_file_encoding = "utf-8"
+        
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
+        # Override with environment variables if they exist
+        self.database_url = os.getenv("DATABASE_URL", self.database_url)
+        self.database_url_async = os.getenv("DATABASE_URL_ASYNC", self.database_url_async)
+        self.secret_key = os.getenv("SECRET_KEY", self.secret_key)
+        self.debug = os.getenv("DEBUG", "false").lower() == "true"
+        self.openai_api_key = os.getenv("OPENAI_API_KEY", self.openai_api_key)
+        
+        # Ensure SQLite is used if no database URL is provided
+        if not self.database_url or self.database_url == "":
+            self.database_url = "sqlite:///./language_ai.db"
+            self.database_url_async = "sqlite+aiosqlite:///./language_ai.db"
+        
+        # If database_url is set but database_url_async is not, derive it
+        if self.database_url and not self.database_url_async:
+            if self.database_url.startswith("sqlite"):
+                self.database_url_async = self.database_url.replace("sqlite://", "sqlite+aiosqlite://")
+            elif self.database_url.startswith("postgresql"):
+                self.database_url_async = self.database_url.replace("postgresql://", "postgresql+asyncpg://")
 
 # Global settings instance
 settings = Settings()
+
+# Debug print
+print(f"🔧 Settings loaded:")
+print(f"   App Name: {settings.app_name}")
+print(f"   Debug Mode: {settings.debug}")
+print(f"   Database URL: {settings.database_url}")
+print(f"   Async Database URL: {settings.database_url_async}")
+print(f"   OpenAI API Key: {'Set' if settings.openai_api_key else 'Not set'}")
+print(f"   Secret Key: {'Set' if settings.secret_key != 'your-secret-key-change-in-production' else 'Default (change in production)'}")
