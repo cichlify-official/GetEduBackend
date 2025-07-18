@@ -6,7 +6,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 from app.database import get_db
 from app.models.models import User
@@ -17,20 +17,19 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
 class UserCreate(BaseModel):
-    email: EmailStr
+    email: str  # Using str instead of EmailStr to avoid email-validator dependency
     username: str
     full_name: str
     password: str
-    user_type: str = "student"
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    email: str  # Using str instead of EmailStr
     password: str
 
 class Token(BaseModel):
     access_token: str
     token_type: str
-    user: dict
+    user: Optional[dict] = None
 
 class AuthService:
     @staticmethod
@@ -60,21 +59,17 @@ class AuthService:
     
     @staticmethod
     async def create_user(db: AsyncSession, user_data: UserCreate) -> User:
+        # Basic email validation
+        if "@" not in user_data.email or "." not in user_data.email:
+            raise HTTPException(status_code=400, detail="Invalid email format")
+        
         hashed_password = AuthService.get_password_hash(user_data.password)
         
-        # Convert string to enum
-        user_type_enum = UserType.STUDENT
-        if user_data.user_type.lower() == "teacher":
-            user_type_enum = UserType.TEACHER
-        elif user_data.user_type.lower() == "admin":
-            user_type_enum = UserType.ADMIN
-        
         db_user = User(
-            email=user_data.email,
+            email=user_data.email.lower().strip(),  # Normalize email
             username=user_data.username,
             full_name=user_data.full_name,
-            hashed_password=hashed_password,
-            user_type=user_type_enum
+            hashed_password=hashed_password
         )
         
         db.add(db_user)
@@ -84,7 +79,7 @@ class AuthService:
     
     @staticmethod
     async def authenticate_user(db: AsyncSession, email: str, password: str) -> Optional[User]:
-        user = await AuthService.get_user_by_email(db, email)
+        user = await AuthService.get_user_by_email(db, email.lower().strip())
         if not user:
             return None
         if not AuthService.verify_password(password, user.hashed_password):
