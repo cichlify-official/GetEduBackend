@@ -7,9 +7,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config.settings import settings
 from app.database import init_db, get_db
 from app.api.auth.auth import AuthService, UserCreate, UserLogin, Token, get_current_active_user
+from app.models.models import User
+
+# Import all routers
 from app.api.routes.essays import router as essays_router
 from app.api.routes.ai_grading import router as ai_router
-from app.models.models import User
+from app.api.routes.dashboard import router as dashboard_router
+from app.api.routes.admin import router as admin_router
+from app.api.routes.speaking import router as speaking_router
+from app.api.routes.reading import router as reading_router
+from app.api.routes.listening import router as listening_router
+from app.api.routes.curriculum import router as curriculum_router
+from app.api.routes.scheduling import router as scheduling_router
+from app.api.routes.evaluation import router as evaluation_router
+from app.api.routes.writing import router as writing_router
+from app.api.routes.recording import router as recording_router
+from app.api.routes.tasks import router as tasks_router
 
 # Lifespan events
 @asynccontextmanager
@@ -34,9 +47,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Include all routers
 app.include_router(essays_router)
 app.include_router(ai_router)
+app.include_router(dashboard_router)
+app.include_router(admin_router)
+app.include_router(speaking_router)
+app.include_router(reading_router)
+app.include_router(listening_router)
+app.include_router(curriculum_router)
+app.include_router(scheduling_router)
+app.include_router(evaluation_router)
+app.include_router(writing_router)
+app.include_router(recording_router)
+app.include_router(tasks_router)
 
 # --- BASIC ROUTES ---
 @app.get("/")
